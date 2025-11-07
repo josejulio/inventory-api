@@ -3,24 +3,26 @@ package schema
 import (
 	"fmt"
 
-	"github.com/project-kessel/inventory-api/internal/schema/in_memory"
+	"github.com/project-kessel/inventory-api/cmd/config/schema/inmemory"
+
 	"github.com/spf13/pflag"
 )
 
 type Options struct {
 	// "in_memory"
-	Repository string             `mapstructure:"repository"`
-	InMemory   *in_memory.Options `mapstructure:"in-memory"`
+	Repository string            `mapstructure:"repository"`
+	InMemory   *inmemory.Options `mapstructure:"in-memory"`
 }
 
 const (
 	InMemoryRepository = "in-memory"
 )
 
+// service configuration
 func NewOptions() *Options {
 	return &Options{
 		Repository: InMemoryRepository,
-		InMemory:   in_memory.NewOptions(),
+		InMemory:   inmemory.NewOptions(),
 	}
 }
 

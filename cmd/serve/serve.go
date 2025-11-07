@@ -9,7 +9,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/project-kessel/inventory-api/internal/schema"
+	schema2 "github.com/project-kessel/inventory-api/cmd/config/schema"
+	"github.com/project-kessel/inventory-api/cmd/factory"
 
 	"github.com/go-kratos/kratos/v2/log"
 	"github.com/project-kessel/inventory-api/internal/metricscollector"
@@ -69,7 +70,7 @@ func NewCommand(
 	consistencyOptions *consistency.Options,
 	serviceOptions *service.Options,
 	loggerOptions common.LoggerOptions,
-	schemaOptions *schema.Options,
+	schemaOptions *schema2.Options,
 ) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "serve",
@@ -159,7 +160,7 @@ func NewCommand(
 			if errs := schemaOptions.Validate(); errs != nil {
 				return errors.NewAggregate(errs)
 			}
-			schemaConfig, errs := schema.NewConfig(schemaOptions).Complete()
+			schemaConfig, errs := schema2.NewConfig(schemaOptions).Complete()
 			if errs != nil {
 				return errors.NewAggregate(errs)
 			}
@@ -244,7 +245,7 @@ func NewCommand(
 			}
 
 			// constructs schemaService service
-			schemaService, err := schema.New(ctx, schemaConfig, log.NewHelper(log.With(logger, "subsystem", "schemaService")))
+			schemaService, err := factory.NewSchemaService(ctx, schemaConfig, log.NewHelper(log.With(logger, "subsystem", "schemaService")))
 			if err != nil {
 				return err
 			}

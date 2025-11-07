@@ -4,11 +4,8 @@ import (
 	"context"
 	"testing"
 
-	"github.com/project-kessel/inventory-api/internal/schema/validation"
-
-	"github.com/project-kessel/inventory-api/internal/schema"
-	"github.com/project-kessel/inventory-api/internal/schema/api"
-	"github.com/project-kessel/inventory-api/internal/schema/in_memory"
+	"github.com/project-kessel/inventory-api/internal/biz/schema"
+	"github.com/project-kessel/inventory-api/internal/data"
 
 	"google.golang.org/protobuf/types/known/structpb"
 
@@ -52,11 +49,11 @@ func TestValidateReportResourceJSON_Success(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	schemaRepository := in_memory.New()
+	schemaRepository := data.NewInMemorySchemaRepository()
 
-	err = schemaRepository.CreateResourceSchema(ctx, api.ResourceRepresentation{
+	err = schemaRepository.CreateResourceSchema(ctx, schema.ResourceRepresentation{
 		ResourceType: "host",
-		ValidationSchema: validation.NewJsonSchemaValidatorFromString(`{
+		ValidationSchema: data.NewJsonSchemaValidatorFromString(`{
 		  "$schema": "http://json-schema.org/draft-07/schema#",
 		  "type": "object",
 		  "properties": {
@@ -69,10 +66,10 @@ func TestValidateReportResourceJSON_Success(t *testing.T) {
 	})
 	assert.NoError(t, err)
 
-	err = schemaRepository.CreateReporterSchema(ctx, api.ReporterRepresentation{
+	err = schemaRepository.CreateReporterSchema(ctx, schema.ReporterRepresentation{
 		ResourceType: "host",
 		ReporterType: "hbi",
-		ValidationSchema: validation.NewJsonSchemaValidatorFromString(`{
+		ValidationSchema: data.NewJsonSchemaValidatorFromString(`{
 		  "$schema": "http://json-schema.org/draft-07/schema#",
 		  "type": "object",
 		  "properties": {
@@ -86,7 +83,7 @@ func TestValidateReportResourceJSON_Success(t *testing.T) {
 	})
 	assert.NoError(t, err)
 
-	err = middleware.ValidateReportResourceJSON(ctx, msg, schema.NewSchemaService(schemaRepository))
+	err = middleware.ValidateReportResourceJSON(ctx, msg, data.NewSchemaService(schemaRepository))
 	assert.NoError(t, err)
 }
 
@@ -115,11 +112,11 @@ func TestValidateReportResourceJSON_FieldExtractionErrors(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	schemaRepository := in_memory.New()
+	schemaRepository := data.NewInMemorySchemaRepository()
 
-	err := schemaRepository.CreateResourceSchema(ctx, api.ResourceRepresentation{
+	err := schemaRepository.CreateResourceSchema(ctx, schema.ResourceRepresentation{
 		ResourceType: "host",
-		ValidationSchema: validation.NewJsonSchemaValidatorFromString(`{
+		ValidationSchema: data.NewJsonSchemaValidatorFromString(`{
 		  "$schema": "http://json-schema.org/draft-07/schema#",
 		  "type": "object",
 		  "properties": {
@@ -132,10 +129,10 @@ func TestValidateReportResourceJSON_FieldExtractionErrors(t *testing.T) {
 	})
 	assert.NoError(t, err)
 
-	err = schemaRepository.CreateReporterSchema(ctx, api.ReporterRepresentation{
+	err = schemaRepository.CreateReporterSchema(ctx, schema.ReporterRepresentation{
 		ResourceType: "host",
 		ReporterType: "hbi",
-		ValidationSchema: validation.NewJsonSchemaValidatorFromString(`{
+		ValidationSchema: data.NewJsonSchemaValidatorFromString(`{
 		  "$schema": "http://json-schema.org/draft-07/schema#",
 		  "type": "object",
 		  "properties": {
@@ -224,7 +221,7 @@ func TestValidateReportResourceJSON_FieldExtractionErrors(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			err := middleware.ValidateReportResourceJSON(ctx, tc.msg, schema.NewSchemaService(schemaRepository))
+			err := middleware.ValidateReportResourceJSON(ctx, tc.msg, data.NewSchemaService(schemaRepository))
 			assert.Error(t, err)
 			assert.Contains(t, err.Error(), tc.expect)
 		})
@@ -423,27 +420,27 @@ func TestValidateReportResourceJSON_SchemaBasedValidation(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			// Setup schemas in cache
 			ctx := context.Background()
-			schemaRepository := in_memory.New()
+			schemaRepository := data.NewInMemorySchemaRepository()
 
 			// Setup config for k8s_policy with acm reporter
-			err := schemaRepository.CreateResourceSchema(ctx, api.ResourceRepresentation{
+			err := schemaRepository.CreateResourceSchema(ctx, schema.ResourceRepresentation{
 				ResourceType:     "k8s_policy",
-				ValidationSchema: validation.NewJsonSchemaValidatorFromString(tc.commonSchema),
+				ValidationSchema: data.NewJsonSchemaValidatorFromString(tc.commonSchema),
 			})
 			assert.NoError(t, err)
 
 			err = schemaRepository.CreateReporterSchema(
 				ctx,
-				api.ReporterRepresentation{
+				schema.ReporterRepresentation{
 					ResourceType:     "k8s_policy",
 					ReporterType:     "acm",
-					ValidationSchema: validation.NewJsonSchemaValidatorFromString(tc.reporterSchema),
+					ValidationSchema: data.NewJsonSchemaValidatorFromString(tc.reporterSchema),
 				},
 			)
 			assert.NoError(t, err)
 
 			// Test the function
-			err = middleware.ValidateReportResourceJSON(ctx, tc.msg, schema.NewSchemaService(schemaRepository))
+			err = middleware.ValidateReportResourceJSON(ctx, tc.msg, data.NewSchemaService(schemaRepository))
 			if tc.expectError {
 				assert.Error(t, err)
 			}

@@ -7,7 +7,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/project-kessel/inventory-api/internal/schema/in_memory"
+	"github.com/project-kessel/inventory-api/internal/data"
 
 	"github.com/go-kratos/kratos/v2/log"
 	"github.com/project-kessel/inventory-api/cmd/common"
@@ -41,7 +41,7 @@ func normalizeYAMLResourceType(yamlContent []byte) ([]byte, error) {
 
 	// Normalize the resources type if it exists
 	if resourceType, exists := yamlData["type"].(string); exists {
-		normalized := in_memory.NormalizeResourceType(resourceType)
+		normalized := data.NormalizeResourceType(resourceType)
 		yamlData["type"] = normalized
 	}
 
@@ -83,7 +83,7 @@ func preloadSchemas() error {
 			continue
 		}
 
-		resourceType := in_memory.NormalizeResourceType(resource.Name())
+		resourceType := data.NormalizeResourceType(resource.Name())
 		resourcePath := filepath.Join(schemaDir, resource.Name())
 
 		// Load common resource data schema
@@ -110,7 +110,7 @@ func preloadSchemas() error {
 					continue
 				}
 
-				reporterType := in_memory.NormalizeResourceType(reporter.Name())
+				reporterType := data.NormalizeResourceType(reporter.Name())
 				reporterPath := filepath.Join(reportersPath, reporter.Name())
 
 				// Encode reporter's config.yaml

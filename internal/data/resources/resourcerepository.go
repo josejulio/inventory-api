@@ -15,6 +15,7 @@ import (
 	"github.com/project-kessel/inventory-api/internal/data"
 )
 
+// deprecated
 type Repo struct {
 	DB                 *gorm.DB
 	MetricsCollector   *metricscollector.MetricsCollector

@@ -1,15 +1,17 @@
 package schema
 
-import "github.com/project-kessel/inventory-api/internal/schema/in_memory"
+import (
+	"github.com/project-kessel/inventory-api/cmd/config/schema/inmemory"
+)
 
 type Config struct {
 	Repository string
-	InMemory   *in_memory.Config
+	InMemory   *inmemory.Config
 }
 
 type completedConfig struct {
 	Repository string
-	InMemory   in_memory.CompletedConfig
+	InMemory   inmemory.CompletedConfig
 }
 
 type CompletedConfig struct {
@@ -22,7 +24,7 @@ func NewConfig(o *Options) *Config {
 	}
 
 	if cfg.Repository == InMemoryRepository {
-		cfg.InMemory = in_memory.NewConfig(o.InMemory)
+		cfg.InMemory = inmemory.NewConfig(o.InMemory)
 	}
 
 	return cfg

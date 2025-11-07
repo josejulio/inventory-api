@@ -1,4 +1,4 @@
-package in_memory
+package inmemory
 
 type Config struct {
 	*Options

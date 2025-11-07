@@ -1,10 +1,10 @@
-package validation
+package data
 
 import (
 	"fmt"
 	"strings"
 
-	"github.com/project-kessel/inventory-api/internal/schema/api"
+	"github.com/project-kessel/inventory-api/internal/biz/schema"
 	"github.com/xeipuuv/gojsonschema"
 )
 
@@ -12,7 +12,7 @@ type jsonSchemaValidator struct {
 	jsonSchema string
 }
 
-func NewJsonSchemaValidatorFromString(jsonSchema string) api.ValidationSchema {
+func NewJsonSchemaValidatorFromString(jsonSchema string) schema.ValidationSchema {
 	return jsonSchemaValidator{
 		jsonSchema: jsonSchema,
 	}

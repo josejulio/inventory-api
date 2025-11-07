@@ -1,4 +1,4 @@
-package in_memory
+package data
 
 import (
 	"context"
@@ -6,13 +6,12 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/project-kessel/inventory-api/internal/schema/validation"
-
-	"github.com/project-kessel/inventory-api/internal/schema/api"
 	"github.com/stretchr/testify/assert"
+
+	"github.com/project-kessel/inventory-api/internal/biz/schema"
 )
 
-var validateSchemaTypeObject = validation.NewJsonSchemaValidatorFromString(`{"type": "object"}`)
+var validateSchemaTypeObject = NewJsonSchemaValidatorFromString(`{"type": "object"}`)
 
 func TestInMemorySchemaRepository_CreateResource(t *testing.T) {
 	repo := &InMemorySchemaRepository{
@@ -20,7 +19,7 @@ func TestInMemorySchemaRepository_CreateResource(t *testing.T) {
 	}
 	ctx := context.Background()
 
-	resource := api.ResourceRepresentation{
+	resource := schema.ResourceRepresentation{
 		ResourceType:     "host",
 		ValidationSchema: validateSchemaTypeObject,
 	}
@@ -41,7 +40,7 @@ func TestInMemorySchemaRepository_CreateResource_AlreadyExists(t *testing.T) {
 	}
 	ctx := context.Background()
 
-	resource := api.ResourceRepresentation{
+	resource := schema.ResourceRepresentation{
 		ResourceType:     "host",
 		ValidationSchema: validateSchemaTypeObject,
 	}
@@ -61,7 +60,7 @@ func TestInMemorySchemaRepository_GetResource(t *testing.T) {
 	}
 	ctx := context.Background()
 
-	resource := api.ResourceRepresentation{
+	resource := schema.ResourceRepresentation{
 		ResourceType:     "k8s_cluster",
 		ValidationSchema: validateSchemaTypeObject,
 	}
@@ -81,7 +80,7 @@ func TestInMemorySchemaRepository_GetResource_NotFound(t *testing.T) {
 	ctx := context.Background()
 
 	_, err := repo.GetResourceSchema(ctx, "nonexistent")
-	assert.ErrorIs(t, err, api.ResourceSchemaNotFound)
+	assert.ErrorIs(t, err, schema.ResourceSchemaNotFound)
 }
 
 func TestInMemorySchemaRepository_UpdateResource(t *testing.T) {
@@ -90,7 +89,7 @@ func TestInMemorySchemaRepository_UpdateResource(t *testing.T) {
 	}
 	ctx := context.Background()
 
-	resource := api.ResourceRepresentation{
+	resource := schema.ResourceRepresentation{
 		ResourceType:     "host",
 		ValidationSchema: validateSchemaTypeObject,
 	}
@@ -99,9 +98,9 @@ func TestInMemorySchemaRepository_UpdateResource(t *testing.T) {
 	assert.NoError(t, err)
 
 	// Update the resource
-	updatedResource := api.ResourceRepresentation{
+	updatedResource := schema.ResourceRepresentation{
 		ResourceType:     "host",
-		ValidationSchema: validation.NewJsonSchemaValidatorFromString(`{"type": "object", "properties": {"name": {"type": "string"}}}`),
+		ValidationSchema: NewJsonSchemaValidatorFromString(`{"type": "object", "properties": {"name": {"type": "string"}}}`),
 	}
 
 	err = repo.UpdateResourceSchema(ctx, updatedResource)
@@ -119,13 +118,13 @@ func TestInMemorySchemaRepository_UpdateResource_NotFound(t *testing.T) {
 	}
 	ctx := context.Background()
 
-	resource := api.ResourceRepresentation{
+	resource := schema.ResourceRepresentation{
 		ResourceType:     "nonexistent",
 		ValidationSchema: validateSchemaTypeObject,
 	}
 
 	err := repo.UpdateResourceSchema(ctx, resource)
-	assert.ErrorIs(t, err, api.ResourceSchemaNotFound)
+	assert.ErrorIs(t, err, schema.ResourceSchemaNotFound)
 }
 
 func TestInMemorySchemaRepository_DeleteResource(t *testing.T) {
@@ -134,7 +133,7 @@ func TestInMemorySchemaRepository_DeleteResource(t *testing.T) {
 	}
 	ctx := context.Background()
 
-	resource := api.ResourceRepresentation{
+	resource := schema.ResourceRepresentation{
 		ResourceType:     "host",
 		ValidationSchema: validateSchemaTypeObject,
 	}
@@ -147,7 +146,7 @@ func TestInMemorySchemaRepository_DeleteResource(t *testing.T) {
 
 	// Verify deletion
 	_, err = repo.GetResourceSchema(ctx, "host")
-	assert.ErrorIs(t, err, api.ResourceSchemaNotFound)
+	assert.ErrorIs(t, err, schema.ResourceSchemaNotFound)
 }
 
 func TestInMemorySchemaRepository_GetResources(t *testing.T) {
@@ -156,7 +155,7 @@ func TestInMemorySchemaRepository_GetResources(t *testing.T) {
 	}
 	ctx := context.Background()
 
-	resources := []api.ResourceRepresentation{
+	resources := []schema.ResourceRepresentation{
 		{ResourceType: "host", ValidationSchema: validateSchemaTypeObject},
 		{ResourceType: "k8s_cluster", ValidationSchema: validateSchemaTypeObject},
 		{ResourceType: "k8s_policy", ValidationSchema: validateSchemaTypeObject},
@@ -182,7 +181,7 @@ func TestInMemorySchemaRepository_CreateResourceReporter(t *testing.T) {
 	ctx := context.Background()
 
 	// Create resource first
-	resource := api.ResourceRepresentation{
+	resource := schema.ResourceRepresentation{
 		ResourceType:     "host",
 		ValidationSchema: validateSchemaTypeObject,
 	}
@@ -190,10 +189,10 @@ func TestInMemorySchemaRepository_CreateResourceReporter(t *testing.T) {
 	assert.NoError(t, err)
 
 	// Create reporter
-	reporter := api.ReporterRepresentation{
+	reporter := schema.ReporterRepresentation{
 		ResourceType:     "host",
 		ReporterType:     "hbi",
-		ValidationSchema: validation.NewJsonSchemaValidatorFromString(`{"type": "object", "properties": {"satellite_id": {"type": "string"}}}`),
+		ValidationSchema: NewJsonSchemaValidatorFromString(`{"type": "object", "properties": {"satellite_id": {"type": "string"}}}`),
 	}
 
 	err = repo.CreateReporterSchema(ctx, reporter)
@@ -213,7 +212,7 @@ func TestInMemorySchemaRepository_GetResourceReporter_NotFound(t *testing.T) {
 	ctx := context.Background()
 
 	// Create resource first
-	resource := api.ResourceRepresentation{
+	resource := schema.ResourceRepresentation{
 		ResourceType:     "host",
 		ValidationSchema: validateSchemaTypeObject,
 	}
@@ -222,7 +221,7 @@ func TestInMemorySchemaRepository_GetResourceReporter_NotFound(t *testing.T) {
 
 	// Try to get non-existent reporter
 	_, err = repo.GetReporterSchema(ctx, "host", "nonexistent")
-	assert.ErrorIs(t, err, api.ReporterSchemaNotfound)
+	assert.ErrorIs(t, err, schema.ReporterSchemaNotfound)
 }
 
 func TestInMemorySchemaRepository_UpdateResourceReporter(t *testing.T) {
@@ -232,14 +231,14 @@ func TestInMemorySchemaRepository_UpdateResourceReporter(t *testing.T) {
 	ctx := context.Background()
 
 	// Create resource and reporter
-	resource := api.ResourceRepresentation{
+	resource := schema.ResourceRepresentation{
 		ResourceType:     "host",
 		ValidationSchema: validateSchemaTypeObject,
 	}
 	err := repo.CreateResourceSchema(ctx, resource)
 	assert.NoError(t, err)
 
-	reporter := api.ReporterRepresentation{
+	reporter := schema.ReporterRepresentation{
 		ResourceType:     "host",
 		ReporterType:     "hbi",
 		ValidationSchema: validateSchemaTypeObject,
@@ -248,10 +247,10 @@ func TestInMemorySchemaRepository_UpdateResourceReporter(t *testing.T) {
 	assert.NoError(t, err)
 
 	// Update reporter
-	updatedReporter := api.ReporterRepresentation{
+	updatedReporter := schema.ReporterRepresentation{
 		ResourceType:     "host",
 		ReporterType:     "hbi",
-		ValidationSchema: validation.NewJsonSchemaValidatorFromString(`{"type": "object", "properties": {"satellite_id": {"type": "string"}}}`),
+		ValidationSchema: NewJsonSchemaValidatorFromString(`{"type": "object", "properties": {"satellite_id": {"type": "string"}}}`),
 	}
 	err = repo.UpdateReporterSchema(ctx, updatedReporter)
 	assert.NoError(t, err)
@@ -269,14 +268,14 @@ func TestInMemorySchemaRepository_DeleteResourceReporter(t *testing.T) {
 	ctx := context.Background()
 
 	// Create resource and reporter
-	resource := api.ResourceRepresentation{
+	resource := schema.ResourceRepresentation{
 		ResourceType:     "host",
 		ValidationSchema: validateSchemaTypeObject,
 	}
 	err := repo.CreateResourceSchema(ctx, resource)
 	assert.NoError(t, err)
 
-	reporter := api.ReporterRepresentation{
+	reporter := schema.ReporterRepresentation{
 		ResourceType:     "host",
 		ReporterType:     "hbi",
 		ValidationSchema: validateSchemaTypeObject,
@@ -290,7 +289,7 @@ func TestInMemorySchemaRepository_DeleteResourceReporter(t *testing.T) {
 
 	// Verify deletion
 	_, err = repo.GetReporterSchema(ctx, "host", "hbi")
-	assert.ErrorIs(t, err, api.ReporterSchemaNotfound)
+	assert.ErrorIs(t, err, schema.ReporterSchemaNotfound)
 }
 
 func TestInMemorySchemaRepository_GetResourceReporters(t *testing.T) {
@@ -300,7 +299,7 @@ func TestInMemorySchemaRepository_GetResourceReporters(t *testing.T) {
 	ctx := context.Background()
 
 	// Create resource
-	resource := api.ResourceRepresentation{
+	resource := schema.ResourceRepresentation{
 		ResourceType:     "host",
 		ValidationSchema: validateSchemaTypeObject,
 	}
@@ -308,7 +307,7 @@ func TestInMemorySchemaRepository_GetResourceReporters(t *testing.T) {
 	assert.NoError(t, err)
 
 	// Create multiple reporters
-	reporters := []api.ReporterRepresentation{
+	reporters := []schema.ReporterRepresentation{
 		{ResourceType: "host", ReporterType: "hbi", ValidationSchema: validateSchemaTypeObject},
 		{ResourceType: "host", ReporterType: "satellite", ValidationSchema: validateSchemaTypeObject},
 		{ResourceType: "host", ReporterType: "insights", ValidationSchema: validateSchemaTypeObject},
@@ -330,7 +329,7 @@ func TestInMemorySchemaRepository_GetResourceReporters(t *testing.T) {
 
 func TestNewFromDir_InvalidDirectory(t *testing.T) {
 	ctx := context.Background()
-	service, err := NewFromDir(ctx, "/tmp/wrong/dir", validation.NewJsonSchemaValidatorFromString)
+	service, err := NewInMemorySchemaRepositoryFromDir(ctx, "/tmp/wrong/dir", NewJsonSchemaValidatorFromString)
 	assert.Error(t, err)
 	assert.Nil(t, service)
 	assert.Contains(t, err.Error(), "failed to read schema directory \"/tmp/wrong/dir\"")
@@ -358,7 +357,7 @@ func TestNewFromDir_ValidDirectory(t *testing.T) {
 	assert.NoError(t, err)
 
 	// Test NewFromDir
-	repo, err := NewFromDir(ctx, tmpDir, validation.NewJsonSchemaValidatorFromString)
+	repo, err := NewInMemorySchemaRepositoryFromDir(ctx, tmpDir, NewJsonSchemaValidatorFromString)
 	assert.NoError(t, err)
 	assert.NotNil(t, repo)
 
@@ -366,19 +365,19 @@ func TestNewFromDir_ValidDirectory(t *testing.T) {
 	resource, err := repo.GetResourceSchema(ctx, "host")
 	assert.NoError(t, err)
 	assert.Equal(t, "host", resource.ResourceType)
-	assert.Equal(t, validation.NewJsonSchemaValidatorFromString(commonSchema), resource.ValidationSchema)
+	assert.Equal(t, NewJsonSchemaValidatorFromString(commonSchema), resource.ValidationSchema)
 
 	// Verify reporter was loaded
 	reporter, err := repo.GetReporterSchema(ctx, "host", "hbi")
 	assert.NoError(t, err)
 	assert.Equal(t, "host", reporter.ResourceType)
 	assert.Equal(t, "hbi", reporter.ReporterType)
-	assert.Equal(t, validation.NewJsonSchemaValidatorFromString(reporterSchema), reporter.ValidationSchema)
+	assert.Equal(t, NewJsonSchemaValidatorFromString(reporterSchema), reporter.ValidationSchema)
 }
 
 func TestNewFromJsonFile_InvalidFile(t *testing.T) {
 	ctx := context.Background()
-	repo, err := NewFromJsonFile(ctx, "/tmp/nonexistent.json", validation.NewJsonSchemaValidatorFromString)
+	repo, err := NewInMemorySchemaRepositoryFromJsonFile(ctx, "/tmp/nonexistent.json", NewJsonSchemaValidatorFromString)
 	assert.Error(t, err)
 	assert.Nil(t, repo)
 	assert.Contains(t, err.Error(), "failed to read schema cache file")
@@ -398,7 +397,7 @@ func TestNewFromJsonFile_ValidFile(t *testing.T) {
 	assert.NoError(t, err)
 
 	// Test NewFromJsonFile
-	repo, err := NewFromJsonFile(ctx, tmpFile, validation.NewJsonSchemaValidatorFromString)
+	repo, err := NewInMemorySchemaRepositoryFromJsonFile(ctx, tmpFile, NewJsonSchemaValidatorFromString)
 	assert.NoError(t, err)
 	assert.NotNil(t, repo)
 
@@ -424,7 +423,7 @@ func TestNewFromJsonBytes_ValidJSON(t *testing.T) {
 		"k8s_cluster:acm": "{\"type\": \"object\"}"
 	}`)
 
-	repo, err := NewFromJsonBytes(ctx, jsonContent, validation.NewJsonSchemaValidatorFromString)
+	repo, err := NewFromJsonBytes(ctx, jsonContent, NewJsonSchemaValidatorFromString)
 	assert.NoError(t, err)
 	assert.NotNil(t, repo)
 
@@ -451,7 +450,7 @@ func TestNewFromJsonBytes_InvalidJSON(t *testing.T) {
 
 	invalidJSON := []byte(`{invalid json`)
 
-	repo, err := NewFromJsonBytes(ctx, invalidJSON, validation.NewJsonSchemaValidatorFromString)
+	repo, err := NewFromJsonBytes(ctx, invalidJSON, NewJsonSchemaValidatorFromString)
 	assert.Error(t, err)
 	assert.Nil(t, repo)
 	assert.Contains(t, err.Error(), "failed to unmarshal schema cache JSON")
@@ -465,7 +464,7 @@ func TestNewFromJsonBytes_OnlyCommonSchemas(t *testing.T) {
 		"common:k8s_cluster": "{\"type\": \"object\"}"
 	}`)
 
-	repo, err := NewFromJsonBytes(ctx, jsonContent, validation.NewJsonSchemaValidatorFromString)
+	repo, err := NewFromJsonBytes(ctx, jsonContent, NewJsonSchemaValidatorFromString)
 	assert.NoError(t, err)
 	assert.NotNil(t, repo)
 
@@ -483,7 +482,287 @@ func TestNewFromJsonBytes_OnlyCommonSchemas(t *testing.T) {
 }
 
 func TestNew(t *testing.T) {
-	repo := New()
+	repo := NewInMemorySchemaRepository()
 	assert.NotNil(t, repo)
 	assert.NotNil(t, repo.content)
+}
+
+func TestLoadResourceSchema(t *testing.T) {
+	tests := []struct {
+		name             string
+		resourceType     string
+		reporterType     string
+		setupFiles       func(string) error
+		expectSchema     string
+		expectExists     bool
+		expectErr        bool
+		expectedErrorMsg string
+	}{
+		{
+			name:         "Valid schema file exists",
+			resourceType: "host",
+			reporterType: "hbi",
+			setupFiles: func(tmpDir string) error {
+				schemaDir := filepath.Join(tmpDir, "host", "reporters", "hbi")
+				if err := os.MkdirAll(schemaDir, 0755); err != nil {
+					return err
+				}
+				schemaContent := `{"type": "object", "properties": {"satellite_id": {"type": "string"}}}`
+				return os.WriteFile(filepath.Join(schemaDir, "host.json"), []byte(schemaContent), 0644)
+			},
+			expectSchema: `{"type": "object", "properties": {"satellite_id": {"type": "string"}}}`,
+			expectExists: true,
+			expectErr:    false,
+		},
+		{
+			name:         "Schema file does not exist",
+			resourceType: "host",
+			reporterType: "nonexistent",
+			setupFiles: func(tmpDir string) error {
+				return nil
+			},
+			expectSchema: "",
+			expectExists: false,
+			expectErr:    false,
+		},
+		{
+			name:         "Directory exists but schema file missing",
+			resourceType: "k8s_cluster",
+			reporterType: "acm",
+			setupFiles: func(tmpDir string) error {
+				schemaDir := filepath.Join(tmpDir, "k8s_cluster", "reporters", "acm")
+				return os.MkdirAll(schemaDir, 0755)
+			},
+			expectSchema: "",
+			expectExists: false,
+			expectErr:    false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tmpDir := t.TempDir()
+			err := tt.setupFiles(tmpDir)
+			assert.NoError(t, err)
+
+			schemaContent, exists, err := loadResourceSchema(tt.resourceType, tt.reporterType, tmpDir)
+
+			if tt.expectErr {
+				assert.Error(t, err)
+				if tt.expectedErrorMsg != "" {
+					assert.Contains(t, err.Error(), tt.expectedErrorMsg)
+				}
+			} else {
+				assert.NoError(t, err)
+				assert.Equal(t, tt.expectExists, exists)
+				assert.Equal(t, tt.expectSchema, schemaContent)
+			}
+		})
+	}
+}
+
+func TestLoadCommonResourceDataSchema(t *testing.T) {
+	tests := []struct {
+		name             string
+		resourceType     string
+		setupFiles       func(string) error
+		expectSchema     string
+		expectErr        bool
+		expectedErrorMsg string
+	}{
+		{
+			name:         "Valid common schema file exists",
+			resourceType: "host",
+			setupFiles: func(tmpDir string) error {
+				resourceDir := filepath.Join(tmpDir, "host")
+				if err := os.MkdirAll(resourceDir, 0755); err != nil {
+					return err
+				}
+				schemaContent := `{"type": "object", "properties": {"workspace_id": {"type": "string"}}}`
+				return os.WriteFile(filepath.Join(resourceDir, "common_representation.json"), []byte(schemaContent), 0644)
+			},
+			expectSchema: `{"type": "object", "properties": {"workspace_id": {"type": "string"}}}`,
+			expectErr:    false,
+		},
+		{
+			name:         "Common schema file does not exist",
+			resourceType: "nonexistent",
+			setupFiles: func(tmpDir string) error {
+				return nil
+			},
+			expectSchema:     "",
+			expectErr:        true,
+			expectedErrorMsg: "failed to read common resource schema",
+		},
+		{
+			name:         "Resource directory exists but common schema missing",
+			resourceType: "k8s_cluster",
+			setupFiles: func(tmpDir string) error {
+				resourceDir := filepath.Join(tmpDir, "k8s_cluster")
+				return os.MkdirAll(resourceDir, 0755)
+			},
+			expectSchema:     "",
+			expectErr:        true,
+			expectedErrorMsg: "failed to read common resource schema",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tmpDir := t.TempDir()
+			err := tt.setupFiles(tmpDir)
+			assert.NoError(t, err)
+
+			schemaContent, err := loadCommonResourceDataSchema(tt.resourceType, tmpDir)
+
+			if tt.expectErr {
+				assert.Error(t, err)
+				if tt.expectedErrorMsg != "" {
+					assert.Contains(t, err.Error(), tt.expectedErrorMsg)
+				}
+			} else {
+				assert.NoError(t, err)
+				assert.Equal(t, tt.expectSchema, schemaContent)
+			}
+		})
+	}
+}
+
+func TestNormalizeResourceType(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected string
+	}{
+		{
+			name:     "Resource type with forward slash",
+			input:    "rhel/host",
+			expected: "rhel_host",
+		},
+		{
+			name:     "Resource type without forward slash",
+			input:    "k8s_cluster",
+			expected: "k8s_cluster",
+		},
+		{
+			name:     "Resource type with multiple forward slashes",
+			input:    "org/team/resource",
+			expected: "org_team_resource",
+		},
+		{
+			name:     "Empty string",
+			input:    "",
+			expected: "",
+		},
+		{
+			name:     "Resource type already normalized",
+			input:    "host",
+			expected: "host",
+		},
+		{
+			name:     "K8s_CLUSTER",
+			input:    "K8s_CLUSTER",
+			expected: "K8s_CLUSTER",
+		},
+		{
+			name:     "rhel/host",
+			input:    "rhel/host",
+			expected: "rhel_host",
+		},
+		{
+			name:     "TEST/RESOURCE",
+			input:    "TEST/RESOURCE",
+			expected: "TEST_RESOURCE",
+		},
+		{
+			name:     "resource",
+			input:    "resource",
+			expected: "resource",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := NormalizeResourceType(tt.input)
+			assert.Equal(t, tt.expected, result)
+		})
+	}
+}
+
+func TestLoadResourceSchema_ComplexScenarios(t *testing.T) {
+	t.Run("Multiple reporters for same resource", func(t *testing.T) {
+		tmpDir := t.TempDir()
+
+		// Setup host resource with multiple reporters
+		reporters := []string{"hbi", "satellite", "insights"}
+		for _, reporter := range reporters {
+			schemaDir := filepath.Join(tmpDir, "host", "reporters", reporter)
+			err := os.MkdirAll(schemaDir, 0755)
+			assert.NoError(t, err)
+
+			schemaContent := `{"type": "object", "properties": {"` + reporter + `_id": {"type": "string"}}}`
+			err = os.WriteFile(filepath.Join(schemaDir, "host.json"), []byte(schemaContent), 0644)
+			assert.NoError(t, err)
+		}
+
+		// Verify each reporter has its own schema
+		for _, reporter := range reporters {
+			schemaContent, exists, err := loadResourceSchema("host", reporter, tmpDir)
+			assert.NoError(t, err)
+			assert.True(t, exists)
+			assert.Contains(t, schemaContent, reporter+"_id")
+		}
+	})
+
+	t.Run("Different resources with same reporter type", func(t *testing.T) {
+		tmpDir := t.TempDir()
+
+		// Setup multiple resources with ACM reporter
+		resources := []string{"k8s_cluster", "k8s_policy"}
+		for _, resource := range resources {
+			schemaDir := filepath.Join(tmpDir, resource, "reporters", "acm")
+			err := os.MkdirAll(schemaDir, 0755)
+			assert.NoError(t, err)
+
+			schemaContent := `{"type": "object", "properties": {"` + resource + `_field": {"type": "string"}}}`
+			err = os.WriteFile(filepath.Join(schemaDir, resource+".json"), []byte(schemaContent), 0644)
+			assert.NoError(t, err)
+		}
+
+		// Verify each resource has its own ACM schema
+		for _, resource := range resources {
+			schemaContent, exists, err := loadResourceSchema(resource, "acm", tmpDir)
+			assert.NoError(t, err)
+			assert.True(t, exists)
+			assert.Contains(t, schemaContent, resource+"_field")
+		}
+	})
+}
+
+func TestLoadCommonResourceDataSchema_ComplexScenarios(t *testing.T) {
+	t.Run("Multiple resources with common schemas", func(t *testing.T) {
+		tmpDir := t.TempDir()
+
+		resources := map[string]string{
+			"host":        `{"type": "object", "properties": {"workspace_id": {"type": "string"}}}`,
+			"k8s_cluster": `{"type": "object", "properties": {"cluster_name": {"type": "string"}}}`,
+			"k8s_policy":  `{"type": "object", "properties": {"policy_name": {"type": "string"}}}`,
+		}
+
+		for resourceType, schemaContent := range resources {
+			resourceDir := filepath.Join(tmpDir, resourceType)
+			err := os.MkdirAll(resourceDir, 0755)
+			assert.NoError(t, err)
+
+			err = os.WriteFile(filepath.Join(resourceDir, "common_representation.json"), []byte(schemaContent), 0644)
+			assert.NoError(t, err)
+		}
+
+		// Verify each resource has its own common schema
+		for resourceType, expectedSchema := range resources {
+			schemaContent, err := loadCommonResourceDataSchema(resourceType, tmpDir)
+			assert.NoError(t, err)
+			assert.Equal(t, expectedSchema, schemaContent)
+		}
+	})
 }

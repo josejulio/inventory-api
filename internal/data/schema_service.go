@@ -1,4 +1,4 @@
-package schema
+package data
 
 import (
 	"context"
@@ -7,21 +7,21 @@ import (
 	"github.com/go-kratos/kratos/v2/errors"
 
 	"github.com/go-kratos/kratos/v2/log"
-	"github.com/project-kessel/inventory-api/internal/schema/api"
+	"github.com/project-kessel/inventory-api/internal/biz/schema"
 )
 
 type SchemaService struct {
-	repository api.SchemaRepository
+	repository schema.Repository
 }
 
-func NewSchemaService(repository api.SchemaRepository) *SchemaService {
+func NewSchemaService(repository schema.Repository) *SchemaService {
 	return &SchemaService{repository: repository}
 }
 
 // IsReporterForResource validates the resourceType and reporterType combination is valid. i.e. that there is a reporter that reports said resource.
 func (s *SchemaService) IsReporterForResource(ctx context.Context, resourceType string, reporterType string) (bool, error) {
 	if _, err := s.repository.GetReporterSchema(ctx, resourceType, reporterType); err != nil {
-		if errors.Is(err, api.ResourceSchemaNotFound) || errors.Is(err, api.ReporterSchemaNotfound) {
+		if errors.Is(err, schema.ResourceSchemaNotFound) || errors.Is(err, schema.ReporterSchemaNotfound) {
 			return false, nil
 		}
 

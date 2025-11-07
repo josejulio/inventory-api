@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/project-kessel/inventory-api/internal/schema"
+	"github.com/project-kessel/inventory-api/internal/data"
 
 	"buf.build/go/protovalidate"
 	"github.com/go-kratos/kratos/v2/errors"
@@ -15,7 +15,7 @@ import (
 	pbv1beta2 "github.com/project-kessel/inventory-api/api/kessel/inventory/v1beta2"
 )
 
-func Validation(validator protovalidate.Validator, schemaService *schema.SchemaService) middleware.Middleware {
+func Validation(validator protovalidate.Validator, schemaService *data.SchemaService) middleware.Middleware {
 	return func(handler middleware.Handler) middleware.Handler {
 		return func(ctx context.Context, req interface{}) (interface{}, error) {
 			if v, ok := req.(proto.Message); ok {
@@ -35,7 +35,7 @@ func Validation(validator protovalidate.Validator, schemaService *schema.SchemaS
 	}
 }
 
-func ValidateReportResourceJSON(ctx context.Context, msg proto.Message, schemaService *schema.SchemaService) error {
+func ValidateReportResourceJSON(ctx context.Context, msg proto.Message, schemaService *data.SchemaService) error {
 	data, err := MarshalProtoToJSON(msg)
 	if err != nil {
 		return err

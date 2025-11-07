@@ -1,8 +1,6 @@
-package api
+package schema
 
-import (
-	"context"
-)
+import "context"
 
 type schemaRepositoryError string
 
@@ -26,11 +24,7 @@ type ReporterRepresentation struct {
 	ValidationSchema ValidationSchema
 }
 
-type ValidationSchema interface {
-	Validate(data interface{}) (bool, error)
-}
-
-type SchemaRepository interface {
+type Repository interface {
 	// GetResourceSchemas returns all the resourceTypes that have a ResourceRepresentation.
 	GetResourceSchemas(ctx context.Context) ([]string, error)
 	// CreateResourceSchema adds the ResourceRepresentation into the repository.

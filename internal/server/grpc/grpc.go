@@ -3,6 +3,8 @@ package grpc
 import (
 	"fmt"
 
+	"github.com/project-kessel/inventory-api/internal/data"
+
 	"buf.build/go/protovalidate"
 	"github.com/go-kratos/kratos/v2/log"
 	"github.com/go-kratos/kratos/v2/middleware"
@@ -14,13 +16,12 @@ import (
 	"github.com/project-kessel/inventory-api/internal/authn"
 	"github.com/project-kessel/inventory-api/internal/authn/interceptor"
 	m "github.com/project-kessel/inventory-api/internal/middleware"
-	"github.com/project-kessel/inventory-api/internal/schema"
 	"go.opentelemetry.io/otel/metric"
 	"google.golang.org/grpc"
 )
 
 // New creates a new a gRPC server.
-func New(c CompletedConfig, schemaService *schema.SchemaService, authn middleware.Middleware, authnConfig authn.CompletedConfig, meter metric.Meter, logger log.Logger) (*kgrpc.Server, error) {
+func New(c CompletedConfig, schemaService *data.SchemaService, authn middleware.Middleware, authnConfig authn.CompletedConfig, meter metric.Meter, logger log.Logger) (*kgrpc.Server, error) {
 	requests, err := metrics.DefaultRequestsCounter(meter, metrics.DefaultServerRequestsCounterName)
 	if err != nil {
 		return nil, err

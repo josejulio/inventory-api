@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/project-kessel/inventory-api/internal/data"
+	"github.com/project-kessel/inventory-api/internal/biz/schema"
 
 	"buf.build/go/protovalidate"
 	"github.com/go-kratos/kratos/v2/errors"
@@ -15,7 +15,7 @@ import (
 	pbv1beta2 "github.com/project-kessel/inventory-api/api/kessel/inventory/v1beta2"
 )
 
-func Validation(validator protovalidate.Validator, schemaService *data.SchemaService) middleware.Middleware {
+func Validation(validator protovalidate.Validator, validationService schema.ValidationService) middleware.Middleware {
 	return func(handler middleware.Handler) middleware.Handler {
 		return func(ctx context.Context, req interface{}) (interface{}, error) {
 			if v, ok := req.(proto.Message); ok {
@@ -25,7 +25,7 @@ func Validation(validator protovalidate.Validator, schemaService *data.SchemaSer
 
 				switch v.(type) {
 				case *pbv1beta2.ReportResourceRequest:
-					if err := ValidateReportResourceJSON(ctx, v, schemaService); err != nil {
+					if err := ValidateReportResourceJSON(ctx, v, validationService); err != nil {
 						return nil, errors.BadRequest("REPORT_RESOURCE_JSON_VALIDATOR", err.Error()).WithCause(err)
 					}
 				}
@@ -35,7 +35,7 @@ func Validation(validator protovalidate.Validator, schemaService *data.SchemaSer
 	}
 }
 
-func ValidateReportResourceJSON(ctx context.Context, msg proto.Message, schemaService *data.SchemaService) error {
+func ValidateReportResourceJSON(ctx context.Context, msg proto.Message, validationService schema.ValidationService) error {
 	data, err := MarshalProtoToJSON(msg)
 	if err != nil {
 		return err
@@ -57,7 +57,7 @@ func ValidateReportResourceJSON(ctx context.Context, msg proto.Message, schemaSe
 	}
 
 	// Validate the combination of resource_type and reporter_type e.g. k8s_cluster & ACM
-	if isReporter, err := schemaService.IsReporterForResource(ctx, resourceType, reporterType); !isReporter {
+	if isReporter, err := validationService.IsReporterForResource(ctx, resourceType, reporterType); !isReporter {
 		if err != nil {
 			return err
 		}
@@ -93,7 +93,7 @@ func ValidateReportResourceJSON(ctx context.Context, msg proto.Message, schemaSe
 	}
 
 	// Validate reporter-specific data using the sanitized map
-	if err := schemaService.ReporterShallowValidate(ctx, resourceType, reporterType, sanitizedReporterRepresentation); err != nil {
+	if err := validationService.ReporterShallowValidate(ctx, resourceType, reporterType, sanitizedReporterRepresentation); err != nil {
 		return err
 	}
 
@@ -103,7 +103,7 @@ func ValidateReportResourceJSON(ctx context.Context, msg proto.Message, schemaSe
 	}
 
 	// Validate common data
-	if err := schemaService.CommonShallowValidate(ctx, resourceType, commonRepresentation); err != nil {
+	if err := validationService.CommonShallowValidate(ctx, resourceType, commonRepresentation); err != nil {
 		return err
 	}
 

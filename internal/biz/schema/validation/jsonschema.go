@@ -1,10 +1,11 @@
-package data
+package validation
 
 import (
 	"fmt"
 	"strings"
 
 	"github.com/project-kessel/inventory-api/internal/biz/schema"
+
 	"github.com/xeipuuv/gojsonschema"
 )
 

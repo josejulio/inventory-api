@@ -4,6 +4,10 @@ import (
 	"context"
 	"testing"
 
+	"github.com/go-kratos/kratos/v2/log"
+	"github.com/project-kessel/inventory-api/internal/biz/schema/validation"
+	"github.com/project-kessel/inventory-api/internal/biz/usecase/resources"
+
 	"github.com/project-kessel/inventory-api/internal/biz/schema"
 	"github.com/project-kessel/inventory-api/internal/data"
 
@@ -53,7 +57,7 @@ func TestValidateReportResourceJSON_Success(t *testing.T) {
 
 	err = schemaRepository.CreateResourceSchema(ctx, schema.ResourceRepresentation{
 		ResourceType: "host",
-		ValidationSchema: data.NewJsonSchemaValidatorFromString(`{
+		ValidationSchema: validation.NewJsonSchemaValidatorFromString(`{
 		  "$schema": "http://json-schema.org/draft-07/schema#",
 		  "type": "object",
 		  "properties": {
@@ -69,7 +73,7 @@ func TestValidateReportResourceJSON_Success(t *testing.T) {
 	err = schemaRepository.CreateReporterSchema(ctx, schema.ReporterRepresentation{
 		ResourceType: "host",
 		ReporterType: "hbi",
-		ValidationSchema: data.NewJsonSchemaValidatorFromString(`{
+		ValidationSchema: validation.NewJsonSchemaValidatorFromString(`{
 		  "$schema": "http://json-schema.org/draft-07/schema#",
 		  "type": "object",
 		  "properties": {
@@ -83,7 +87,7 @@ func TestValidateReportResourceJSON_Success(t *testing.T) {
 	})
 	assert.NoError(t, err)
 
-	err = middleware.ValidateReportResourceJSON(ctx, msg, data.NewSchemaService(schemaRepository))
+	err = middleware.ValidateReportResourceJSON(ctx, msg, resources.NewSchemaUsecase(data.NewFakeResourceRepository(), schemaRepository, log.NewHelper(log.DefaultLogger)))
 	assert.NoError(t, err)
 }
 
@@ -116,7 +120,7 @@ func TestValidateReportResourceJSON_FieldExtractionErrors(t *testing.T) {
 
 	err := schemaRepository.CreateResourceSchema(ctx, schema.ResourceRepresentation{
 		ResourceType: "host",
-		ValidationSchema: data.NewJsonSchemaValidatorFromString(`{
+		ValidationSchema: validation.NewJsonSchemaValidatorFromString(`{
 		  "$schema": "http://json-schema.org/draft-07/schema#",
 		  "type": "object",
 		  "properties": {
@@ -132,7 +136,7 @@ func TestValidateReportResourceJSON_FieldExtractionErrors(t *testing.T) {
 	err = schemaRepository.CreateReporterSchema(ctx, schema.ReporterRepresentation{
 		ResourceType: "host",
 		ReporterType: "hbi",
-		ValidationSchema: data.NewJsonSchemaValidatorFromString(`{
+		ValidationSchema: validation.NewJsonSchemaValidatorFromString(`{
 		  "$schema": "http://json-schema.org/draft-07/schema#",
 		  "type": "object",
 		  "properties": {
@@ -221,7 +225,7 @@ func TestValidateReportResourceJSON_FieldExtractionErrors(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			err := middleware.ValidateReportResourceJSON(ctx, tc.msg, data.NewSchemaService(schemaRepository))
+			err := middleware.ValidateReportResourceJSON(ctx, tc.msg, resources.NewSchemaUsecase(data.NewFakeResourceRepository(), schemaRepository, log.NewHelper(log.DefaultLogger)))
 			assert.Error(t, err)
 			assert.Contains(t, err.Error(), tc.expect)
 		})
@@ -425,7 +429,7 @@ func TestValidateReportResourceJSON_SchemaBasedValidation(t *testing.T) {
 			// Setup config for k8s_policy with acm reporter
 			err := schemaRepository.CreateResourceSchema(ctx, schema.ResourceRepresentation{
 				ResourceType:     "k8s_policy",
-				ValidationSchema: data.NewJsonSchemaValidatorFromString(tc.commonSchema),
+				ValidationSchema: validation.NewJsonSchemaValidatorFromString(tc.commonSchema),
 			})
 			assert.NoError(t, err)
 
@@ -434,13 +438,13 @@ func TestValidateReportResourceJSON_SchemaBasedValidation(t *testing.T) {
 				schema.ReporterRepresentation{
 					ResourceType:     "k8s_policy",
 					ReporterType:     "acm",
-					ValidationSchema: data.NewJsonSchemaValidatorFromString(tc.reporterSchema),
+					ValidationSchema: validation.NewJsonSchemaValidatorFromString(tc.reporterSchema),
 				},
 			)
 			assert.NoError(t, err)
 
 			// Test the function
-			err = middleware.ValidateReportResourceJSON(ctx, tc.msg, data.NewSchemaService(schemaRepository))
+			err = middleware.ValidateReportResourceJSON(ctx, tc.msg, resources.NewSchemaUsecase(data.NewFakeResourceRepository(), schemaRepository, log.NewHelper(log.DefaultLogger)))
 			if tc.expectError {
 				assert.Error(t, err)
 			}

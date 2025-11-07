@@ -244,11 +244,17 @@ func NewCommand(
 				return err
 			}
 
-			// constructs schemaService service
-			schemaService, err := factory.NewSchemaService(ctx, schemaConfig, log.NewHelper(log.With(logger, "subsystem", "schemaService")))
+			// constructs schema repository
+			schemaRepository, err := factory.NewSchemaRepository(ctx, schemaConfig, log.NewHelper(log.With(logger, "subsystem", "schemaRepository")))
 			if err != nil {
 				return err
 			}
+
+			// Create transaction manager for all repositories
+			transactionManager := data.NewGormTransactionManager(mc, storageConfig.Options.MaxSerializationRetries)
+			// Initialize v1beta2 resource repository
+			resourceRepo := data.NewResourceRepository(db, transactionManager)
+			schemaService := resourcesctl.NewSchemaUsecase(resourceRepo, schemaRepository, log.NewHelper(log.With(logger, "subsystem", "schemaService")))
 
 			// construct servers
 			server, err := server.New(serverConfig, schemaService, middleware.Authentication(authenticator), authnConfig, logger)
@@ -286,12 +292,9 @@ func NewCommand(
 				},
 			})
 
-			// Create transaction manager for all repositories
-			transactionManager := data.NewGormTransactionManager(mc, storageConfig.Options.MaxSerializationRetries)
-
 			//v1beta2
 			// wire together inventory service handling
-			resourceRepo := data.NewResourceRepository(db, transactionManager)
+			// resource repo is initialized before
 			legacy_resource_repo := legacyresourcerepo.New(db, mc, transactionManager)
 			inventory_controller := resourcesctl.New(resourceRepo, legacy_resource_repo, inventoryresources_repo, authorizer, eventingManager, "notifications", log.With(logger, "subsystem", "notificationsintegrations_controller"), listenManager, waitForNotifCircuitBreaker, usecaseConfig, mc)
 
@@ -355,7 +358,7 @@ func NewCommand(
 						// If the consumer cannot process a message, the consumer loop is restarted
 						// This is to ensure we re-read the message and prevent it being dropped and moving to next message.
 						// To re-read the current message, we have to recreate the consumer connection so that the earliest offset is used
-						inventoryConsumer, err = consumer.New(consumerConfig, db, authzConfig, authorizer, notifier, log.NewHelper(log.With(logger, "subsystem", "inventoryConsumer")), nil)
+						inventoryConsumer, err = consumer.New(consumerConfig, db, schemaRepository, authzConfig, authorizer, notifier, log.NewHelper(log.With(logger, "subsystem", "inventoryConsumer")), nil)
 						if err != nil {
 							shutdown(err)
 						}

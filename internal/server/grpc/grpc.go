@@ -3,7 +3,7 @@ package grpc
 import (
 	"fmt"
 
-	"github.com/project-kessel/inventory-api/internal/data"
+	"github.com/project-kessel/inventory-api/internal/biz/schema"
 
 	"buf.build/go/protovalidate"
 	"github.com/go-kratos/kratos/v2/log"
@@ -21,7 +21,7 @@ import (
 )
 
 // New creates a new a gRPC server.
-func New(c CompletedConfig, schemaService *data.SchemaService, authn middleware.Middleware, authnConfig authn.CompletedConfig, meter metric.Meter, logger log.Logger) (*kgrpc.Server, error) {
+func New(c CompletedConfig, schemaValidationService schema.ValidationService, authn middleware.Middleware, authnConfig authn.CompletedConfig, meter metric.Meter, logger log.Logger) (*kgrpc.Server, error) {
 	requests, err := metrics.DefaultRequestsCounter(meter, metrics.DefaultServerRequestsCounterName)
 	if err != nil {
 		return nil, err
@@ -54,7 +54,7 @@ func New(c CompletedConfig, schemaService *data.SchemaService, authn middleware.
 				metrics.WithRequests(requests),
 				metrics.WithSeconds(seconds),
 			),
-			m.Validation(validator, schemaService),
+			m.Validation(validator, schemaValidationService),
 			selector.Server(
 				authn,
 			).Match(NewWhiteListMatcher).Build(),

@@ -6,12 +6,14 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/project-kessel/inventory-api/internal/biz/schema/validation"
+
 	"github.com/stretchr/testify/assert"
 
 	"github.com/project-kessel/inventory-api/internal/biz/schema"
 )
 
-var validateSchemaTypeObject = NewJsonSchemaValidatorFromString(`{"type": "object"}`)
+var validateSchemaTypeObject = validation.NewJsonSchemaValidatorFromString(`{"type": "object"}`)
 
 func TestInMemorySchemaRepository_CreateResource(t *testing.T) {
 	repo := &InMemorySchemaRepository{
@@ -100,7 +102,7 @@ func TestInMemorySchemaRepository_UpdateResource(t *testing.T) {
 	// Update the resource
 	updatedResource := schema.ResourceRepresentation{
 		ResourceType:     "host",
-		ValidationSchema: NewJsonSchemaValidatorFromString(`{"type": "object", "properties": {"name": {"type": "string"}}}`),
+		ValidationSchema: validation.NewJsonSchemaValidatorFromString(`{"type": "object", "properties": {"name": {"type": "string"}}}`),
 	}
 
 	err = repo.UpdateResourceSchema(ctx, updatedResource)
@@ -192,7 +194,7 @@ func TestInMemorySchemaRepository_CreateResourceReporter(t *testing.T) {
 	reporter := schema.ReporterRepresentation{
 		ResourceType:     "host",
 		ReporterType:     "hbi",
-		ValidationSchema: NewJsonSchemaValidatorFromString(`{"type": "object", "properties": {"satellite_id": {"type": "string"}}}`),
+		ValidationSchema: validation.NewJsonSchemaValidatorFromString(`{"type": "object", "properties": {"satellite_id": {"type": "string"}}}`),
 	}
 
 	err = repo.CreateReporterSchema(ctx, reporter)
@@ -250,7 +252,7 @@ func TestInMemorySchemaRepository_UpdateResourceReporter(t *testing.T) {
 	updatedReporter := schema.ReporterRepresentation{
 		ResourceType:     "host",
 		ReporterType:     "hbi",
-		ValidationSchema: NewJsonSchemaValidatorFromString(`{"type": "object", "properties": {"satellite_id": {"type": "string"}}}`),
+		ValidationSchema: validation.NewJsonSchemaValidatorFromString(`{"type": "object", "properties": {"satellite_id": {"type": "string"}}}`),
 	}
 	err = repo.UpdateReporterSchema(ctx, updatedReporter)
 	assert.NoError(t, err)
@@ -329,7 +331,7 @@ func TestInMemorySchemaRepository_GetResourceReporters(t *testing.T) {
 
 func TestNewFromDir_InvalidDirectory(t *testing.T) {
 	ctx := context.Background()
-	service, err := NewInMemorySchemaRepositoryFromDir(ctx, "/tmp/wrong/dir", NewJsonSchemaValidatorFromString)
+	service, err := NewInMemorySchemaRepositoryFromDir(ctx, "/tmp/wrong/dir", validation.NewJsonSchemaValidatorFromString)
 	assert.Error(t, err)
 	assert.Nil(t, service)
 	assert.Contains(t, err.Error(), "failed to read schema directory \"/tmp/wrong/dir\"")
@@ -357,7 +359,7 @@ func TestNewFromDir_ValidDirectory(t *testing.T) {
 	assert.NoError(t, err)
 
 	// Test NewFromDir
-	repo, err := NewInMemorySchemaRepositoryFromDir(ctx, tmpDir, NewJsonSchemaValidatorFromString)
+	repo, err := NewInMemorySchemaRepositoryFromDir(ctx, tmpDir, validation.NewJsonSchemaValidatorFromString)
 	assert.NoError(t, err)
 	assert.NotNil(t, repo)
 
@@ -365,19 +367,19 @@ func TestNewFromDir_ValidDirectory(t *testing.T) {
 	resource, err := repo.GetResourceSchema(ctx, "host")
 	assert.NoError(t, err)
 	assert.Equal(t, "host", resource.ResourceType)
-	assert.Equal(t, NewJsonSchemaValidatorFromString(commonSchema), resource.ValidationSchema)
+	assert.Equal(t, validation.NewJsonSchemaValidatorFromString(commonSchema), resource.ValidationSchema)
 
 	// Verify reporter was loaded
 	reporter, err := repo.GetReporterSchema(ctx, "host", "hbi")
 	assert.NoError(t, err)
 	assert.Equal(t, "host", reporter.ResourceType)
 	assert.Equal(t, "hbi", reporter.ReporterType)
-	assert.Equal(t, NewJsonSchemaValidatorFromString(reporterSchema), reporter.ValidationSchema)
+	assert.Equal(t, validation.NewJsonSchemaValidatorFromString(reporterSchema), reporter.ValidationSchema)
 }
 
 func TestNewFromJsonFile_InvalidFile(t *testing.T) {
 	ctx := context.Background()
-	repo, err := NewInMemorySchemaRepositoryFromJsonFile(ctx, "/tmp/nonexistent.json", NewJsonSchemaValidatorFromString)
+	repo, err := NewInMemorySchemaRepositoryFromJsonFile(ctx, "/tmp/nonexistent.json", validation.NewJsonSchemaValidatorFromString)
 	assert.Error(t, err)
 	assert.Nil(t, repo)
 	assert.Contains(t, err.Error(), "failed to read schema cache file")
@@ -397,7 +399,7 @@ func TestNewFromJsonFile_ValidFile(t *testing.T) {
 	assert.NoError(t, err)
 
 	// Test NewFromJsonFile
-	repo, err := NewInMemorySchemaRepositoryFromJsonFile(ctx, tmpFile, NewJsonSchemaValidatorFromString)
+	repo, err := NewInMemorySchemaRepositoryFromJsonFile(ctx, tmpFile, validation.NewJsonSchemaValidatorFromString)
 	assert.NoError(t, err)
 	assert.NotNil(t, repo)
 
@@ -423,7 +425,7 @@ func TestNewFromJsonBytes_ValidJSON(t *testing.T) {
 		"k8s_cluster:acm": "{\"type\": \"object\"}"
 	}`)
 
-	repo, err := NewFromJsonBytes(ctx, jsonContent, NewJsonSchemaValidatorFromString)
+	repo, err := NewFromJsonBytes(ctx, jsonContent, validation.NewJsonSchemaValidatorFromString)
 	assert.NoError(t, err)
 	assert.NotNil(t, repo)
 
@@ -450,7 +452,7 @@ func TestNewFromJsonBytes_InvalidJSON(t *testing.T) {
 
 	invalidJSON := []byte(`{invalid json`)
 
-	repo, err := NewFromJsonBytes(ctx, invalidJSON, NewJsonSchemaValidatorFromString)
+	repo, err := NewFromJsonBytes(ctx, invalidJSON, validation.NewJsonSchemaValidatorFromString)
 	assert.Error(t, err)
 	assert.Nil(t, repo)
 	assert.Contains(t, err.Error(), "failed to unmarshal schema cache JSON")
@@ -464,7 +466,7 @@ func TestNewFromJsonBytes_OnlyCommonSchemas(t *testing.T) {
 		"common:k8s_cluster": "{\"type\": \"object\"}"
 	}`)
 
-	repo, err := NewFromJsonBytes(ctx, jsonContent, NewJsonSchemaValidatorFromString)
+	repo, err := NewFromJsonBytes(ctx, jsonContent, validation.NewJsonSchemaValidatorFromString)
 	assert.NoError(t, err)
 	assert.NotNil(t, repo)
 

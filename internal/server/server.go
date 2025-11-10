@@ -4,8 +4,6 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/project-kessel/inventory-api/internal/biz/schema"
-
 	"github.com/go-kratos/kratos/v2"
 	"github.com/go-kratos/kratos/v2/log"
 	"github.com/go-kratos/kratos/v2/middleware"
@@ -31,7 +29,7 @@ type Server struct {
 
 // New creates a new Server instance with the provided configuration and middleware.
 // It initializes both HTTP and gRPC servers with the given authentication middleware.
-func New(c CompletedConfig, schemaValidationService schema.ValidationService, authn middleware.Middleware, authnConfig authn.CompletedConfig, logger log.Logger) (*Server, error) {
+func New(c CompletedConfig, authn middleware.Middleware, authnConfig authn.CompletedConfig, logger log.Logger) (*Server, error) {
 	s := &Server{
 		Id:     c.Options.Id,
 		Name:   c.Options.Name,
@@ -48,12 +46,12 @@ func New(c CompletedConfig, schemaValidationService schema.ValidationService, au
 		return nil, fmt.Errorf("init meter failed: %w", err)
 	}
 
-	httpServer, err := http.New(c.HttpConfig, schemaValidationService, authn, meter, logger)
+	httpServer, err := http.New(c.HttpConfig, authn, meter, logger)
 	if err != nil {
 		return nil, fmt.Errorf("init http server failed: %w", err)
 	}
 
-	grpcServer, err := grpc.New(c.GrpcConfig, schemaValidationService, authn, authnConfig, meter, logger)
+	grpcServer, err := grpc.New(c.GrpcConfig, authn, authnConfig, meter, logger)
 	if err != nil {
 		return nil, fmt.Errorf("init grpc server failed: %w", err)
 	}

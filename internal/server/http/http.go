@@ -9,7 +9,6 @@ import (
 	"github.com/go-kratos/kratos/v2/middleware/recovery"
 	"github.com/go-kratos/kratos/v2/middleware/selector"
 	"github.com/go-kratos/kratos/v2/transport/http"
-	"github.com/project-kessel/inventory-api/internal/biz/schema"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"go.opentelemetry.io/otel/metric"
@@ -18,7 +17,7 @@ import (
 )
 
 // New create a new http server.
-func New(c CompletedConfig, schemaValidationSchema schema.ValidationService, authn middleware.Middleware, meter metric.Meter, logger log.Logger) (*http.Server, error) {
+func New(c CompletedConfig, authn middleware.Middleware, meter metric.Meter, logger log.Logger) (*http.Server, error) {
 	requests, err := metrics.DefaultRequestsCounter(meter, metrics.DefaultServerRequestsCounterName)
 	if err != nil {
 		return nil, err
@@ -40,7 +39,7 @@ func New(c CompletedConfig, schemaValidationSchema schema.ValidationService, aut
 				metrics.WithSeconds(seconds),
 				metrics.WithRequests(requests),
 			),
-			m.Validation(validator, schemaValidationSchema),
+			m.Validation(validator),
 			selector.Server(
 				authn,
 			).Match(NewWhiteListMatcher).Build(),

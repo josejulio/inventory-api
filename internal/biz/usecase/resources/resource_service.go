@@ -915,7 +915,7 @@ func (uc *Usecase) GetResourceRepository() data.ResourceRepository {
 	return uc.resourceRepository
 }
 
-func validateReportResourceJSON(ctx context.Context, msg proto.Message, validationService schema.ValidationService) error {
+func validateReportResourceJSON(ctx context.Context, msg proto.Message, schemaUseCase *SchemaUsecase) error {
 	data, err := marshalProtoToJSON(msg)
 	if err != nil {
 		return err
@@ -937,7 +937,7 @@ func validateReportResourceJSON(ctx context.Context, msg proto.Message, validati
 	}
 
 	// Validate the combination of resource_type and reporter_type e.g. k8s_cluster & ACM
-	if isReporter, err := validationService.IsReporterForResource(ctx, resourceType, reporterType); !isReporter {
+	if isReporter, err := schemaUseCase.IsReporterForResource(ctx, resourceType, reporterType); !isReporter {
 		if err != nil {
 			return err
 		}
@@ -973,7 +973,7 @@ func validateReportResourceJSON(ctx context.Context, msg proto.Message, validati
 	}
 
 	// Validate reporter-specific data using the sanitized map
-	if err := validationService.ReporterShallowValidate(ctx, resourceType, reporterType, sanitizedReporterRepresentation); err != nil {
+	if err := schemaUseCase.ReporterShallowValidate(ctx, resourceType, reporterType, sanitizedReporterRepresentation); err != nil {
 		return err
 	}
 
@@ -983,7 +983,7 @@ func validateReportResourceJSON(ctx context.Context, msg proto.Message, validati
 	}
 
 	// Validate common data
-	if err := validationService.CommonShallowValidate(ctx, resourceType, commonRepresentation); err != nil {
+	if err := schemaUseCase.CommonShallowValidate(ctx, resourceType, commonRepresentation); err != nil {
 		return err
 	}
 

@@ -8,11 +8,13 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/project-kessel/inventory-api/internal/biz/schema/validation"
+	schema2 "github.com/project-kessel/inventory-api/internal/config/schema"
+	"github.com/project-kessel/inventory-api/internal/config/schema/inmemory"
+
 	"github.com/go-kratos/kratos/v2/log"
 	"github.com/project-kessel/inventory-api/internal/biz/schema"
 )
-
-type ValidationSchemaFromString func(string) schema.ValidationSchema
 
 type InMemorySchemaRepository struct {
 	// TODO: Not thread safe - a sync.Map might not help either as we have to sync reporters (see UpdateResourceSchema) as well
@@ -172,7 +174,7 @@ func NewInMemorySchemaRepository() *InMemorySchemaRepository {
 	}
 }
 
-func NewInMemorySchemaRepositoryFromDir(ctx context.Context, resourceDir string, validationSchemaFromString ValidationSchemaFromString) (*InMemorySchemaRepository, error) {
+func NewInMemorySchemaRepositoryFromDir(ctx context.Context, resourceDir string, validationSchemaFromString validation.SchemaFromString) (*InMemorySchemaRepository, error) {
 	resourceDirs, err := os.ReadDir(resourceDir)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read schema directory %q: %w", resourceDir, err)
@@ -236,7 +238,7 @@ func NewInMemorySchemaRepositoryFromDir(ctx context.Context, resourceDir string,
 	return &repository, nil
 }
 
-func NewInMemorySchemaRepositoryFromJsonFile(ctx context.Context, jsonFile string, validationSchemaFromString ValidationSchemaFromString) (*InMemorySchemaRepository, error) {
+func NewInMemorySchemaRepositoryFromJsonFile(ctx context.Context, jsonFile string, validationSchemaFromString validation.SchemaFromString) (*InMemorySchemaRepository, error) {
 	jsonData, err := os.ReadFile(jsonFile)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read schema cache file: %w", err)
@@ -245,7 +247,7 @@ func NewInMemorySchemaRepositoryFromJsonFile(ctx context.Context, jsonFile strin
 	return NewFromJsonBytes(ctx, jsonData, validationSchemaFromString)
 }
 
-func NewFromJsonBytes(ctx context.Context, jsonBytes []byte, validationSchemaFromString ValidationSchemaFromString) (*InMemorySchemaRepository, error) {
+func NewFromJsonBytes(ctx context.Context, jsonBytes []byte, validationSchemaFromString validation.SchemaFromString) (*InMemorySchemaRepository, error) {
 	repository := InMemorySchemaRepository{
 		content: make(map[string]resourceEntry),
 	}
@@ -342,4 +344,20 @@ func loadCommonResourceDataSchema(resourceType string, baseSchemaDir string) (st
 
 func NormalizeResourceType(resourceType string) string {
 	return strings.ReplaceAll(resourceType, "/", "_")
+}
+
+func NewSchemaRepository(ctx context.Context, c schema2.CompletedConfig, logger *log.Helper) (schema.Repository, error) {
+	switch c.Repository {
+	case schema2.InMemoryRepository:
+		switch c.InMemory.Type {
+		case inmemory.EmptyRepository:
+			return NewInMemorySchemaRepository(), nil
+		case inmemory.JSONRepository:
+			return NewInMemorySchemaRepositoryFromJsonFile(ctx, c.InMemory.Path, validation.NewJsonSchemaValidatorFromString)
+		case inmemory.DirRepository:
+			return NewInMemorySchemaRepositoryFromDir(ctx, c.InMemory.Path, validation.NewJsonSchemaValidatorFromString)
+		}
+	}
+
+	return nil, fmt.Errorf("invalid repository type: %s", c.Repository)
 }

@@ -1,6 +1,10 @@
 package schema
 
-import "context"
+import (
+	"context"
+
+	"github.com/project-kessel/inventory-api/internal/biz/schema/validation"
+)
 
 type schemaRepositoryError string
 
@@ -15,13 +19,13 @@ const (
 
 type ResourceRepresentation struct {
 	ResourceType     string
-	ValidationSchema ValidationSchema
+	ValidationSchema validation.Schema
 }
 
 type ReporterRepresentation struct {
 	ResourceType     string
 	ReporterType     string
-	ValidationSchema ValidationSchema
+	ValidationSchema validation.Schema
 }
 
 type Repository interface {

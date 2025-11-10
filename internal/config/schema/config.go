@@ -1,7 +1,7 @@
 package schema
 
 import (
-	"github.com/project-kessel/inventory-api/cmd/config/schema/inmemory"
+	"github.com/project-kessel/inventory-api/internal/config/schema/inmemory"
 )
 
 type Config struct {

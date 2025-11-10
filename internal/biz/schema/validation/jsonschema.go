@@ -4,8 +4,6 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/project-kessel/inventory-api/internal/biz/schema"
-
 	"github.com/xeipuuv/gojsonschema"
 )
 
@@ -13,14 +11,14 @@ type jsonSchemaValidator struct {
 	jsonSchema string
 }
 
-func NewJsonSchemaValidatorFromString(jsonSchema string) schema.ValidationSchema {
+func NewJsonSchemaValidatorFromString(jsonSchema string) Schema {
 	return jsonSchemaValidator{
 		jsonSchema: jsonSchema,
 	}
 }
 
-func (schema jsonSchemaValidator) Validate(data interface{}) (bool, error) {
-	schemaLoader := gojsonschema.NewStringLoader(schema.jsonSchema)
+func (jschema jsonSchemaValidator) Validate(data interface{}) (bool, error) {
+	schemaLoader := gojsonschema.NewStringLoader(jschema.jsonSchema)
 	dataLoader := gojsonschema.NewGoLoader(data)
 
 	result, err := gojsonschema.Validate(schemaLoader, dataLoader)

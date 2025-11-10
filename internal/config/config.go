@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strconv"
 
-	"github.com/project-kessel/inventory-api/cmd/config/schema"
+	"github.com/project-kessel/inventory-api/internal/config/schema"
 
 	"github.com/go-kratos/kratos/v2/log"
 	"github.com/project-kessel/inventory-api/cmd/common"

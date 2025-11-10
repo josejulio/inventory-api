@@ -435,7 +435,7 @@ func TestValidateReportResourceJSON_Success(t *testing.T) {
 	})
 	assert.NoError(t, err)
 
-	err = validateReportResourceJSON(ctx, msg, NewSchemaUsecase(data.NewFakeResourceRepository(), schemaRepository, log.NewHelper(log.DefaultLogger)))
+	err = validateReportResource(ctx, msg, NewSchemaUsecase(data.NewFakeResourceRepository(), schemaRepository, log.NewHelper(log.DefaultLogger)))
 	assert.NoError(t, err)
 }
 
@@ -579,7 +579,7 @@ func TestValidateReportResourceJSON_FieldExtractionErrors(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			err := validateReportResourceJSON(ctx, tc.msg, NewSchemaUsecase(data.NewFakeResourceRepository(), schemaRepository, log.NewHelper(log.DefaultLogger)))
+			err := validateReportResource(ctx, tc.msg, NewSchemaUsecase(data.NewFakeResourceRepository(), schemaRepository, log.NewHelper(log.DefaultLogger)))
 			assert.Error(t, err)
 			assert.Contains(t, err.Error(), tc.expect)
 		})
@@ -798,7 +798,7 @@ func TestValidateReportResourceJSON_SchemaBasedValidation(t *testing.T) {
 			assert.NoError(t, err)
 
 			// Test the function
-			err = validateReportResourceJSON(ctx, tc.msg, NewSchemaUsecase(data.NewFakeResourceRepository(), schemaRepository, log.NewHelper(log.DefaultLogger)))
+			err = validateReportResource(ctx, tc.msg, NewSchemaUsecase(data.NewFakeResourceRepository(), schemaRepository, log.NewHelper(log.DefaultLogger)))
 			if tc.expectError {
 				assert.Error(t, err)
 			}

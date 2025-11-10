@@ -123,7 +123,7 @@ func (uc *Usecase) ReportResource(ctx context.Context, request *v1beta2.ReportRe
 		return err
 	}
 
-	err = validateReportResourceJSON(ctx, request, uc.schemaUsecase)
+	err = validateReportResource(ctx, request, uc.schemaUsecase)
 	if err != nil {
 		return err
 	}
@@ -915,7 +915,7 @@ func (uc *Usecase) GetResourceRepository() data.ResourceRepository {
 	return uc.resourceRepository
 }
 
-func validateReportResourceJSON(ctx context.Context, msg proto.Message, schemaUseCase *SchemaUsecase) error {
+func validateReportResource(ctx context.Context, msg proto.Message, schemaUseCase *SchemaUsecase) error {
 	data, err := marshalProtoToJSON(msg)
 	if err != nil {
 		return err

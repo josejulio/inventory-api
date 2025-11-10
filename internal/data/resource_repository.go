@@ -108,7 +108,6 @@ func (result FindResourceByKeysResult) ToSnapshots() (bizmodel.ResourceSnapshot,
 	return resourceSnapshot, reporterResourceSnapshot
 }
 
-// might go to biz
 type ResourceRepository interface {
 	NextResourceId() (bizmodel.ResourceId, error)
 	NextReporterResourceId() (bizmodel.ReporterResourceId, error)

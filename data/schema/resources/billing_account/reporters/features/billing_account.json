@@ -9,6 +9,6 @@
       "type": "array"
     }
   },
-  "required": [],
+  "required": ["workspaces"],
   "type": "object"
 }

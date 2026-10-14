@@ -1,0 +1,10 @@
+# Complete dependency definition for PERF_BONFIRE_SOURCE=file. The launcher adds
+# the local Inventory overlay; no app-interface reference lookup is needed.
+apps:
+  - name: kessel
+    components:
+      - name: kessel-kafkaconnect
+        host: github
+        repo: project-kessel/kessel-kafka-connect
+        path: deploy/kafkaconnect-ephem.yml
+        ref: main

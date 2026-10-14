@@ -1,0 +1,20 @@
+{
+  "p95_limits_ms": {
+    "grpc/fresh/1/create/api": 20.0,
+    "grpc/fresh/1/create/propagation": 760.0,
+    "grpc/fresh/1/delete/api": 15.0,
+    "grpc/fresh/1/delete/propagation": 770.0,
+    "grpc/fresh/1/unchanged_update/api": 20.0,
+    "grpc/fresh/1/unchanged_update/propagation": 750.0,
+    "grpc/fresh/1/workspace_update/api": 15.0,
+    "grpc/fresh/1/workspace_update/propagation": 760.0,
+    "grpc/fresh/4/create/api": 25.0,
+    "grpc/fresh/4/create/propagation": 760.0,
+    "grpc/fresh/4/delete/api": 40.0,
+    "grpc/fresh/4/delete/propagation": 765.0,
+    "grpc/fresh/4/unchanged_update/api": 30.0,
+    "grpc/fresh/4/unchanged_update/propagation": 740.0,
+    "grpc/fresh/4/workspace_update/api": 35.0,
+    "grpc/fresh/4/workspace_update/propagation": 775.0
+  }
+}

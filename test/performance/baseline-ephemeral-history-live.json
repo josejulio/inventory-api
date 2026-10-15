@@ -1,0 +1,10 @@
+{
+  "p95_limits_ms": {
+    "grpc/history_live/1/delete/propagation": 620.644648,
+    "grpc/history_live/1/reporter_update/consumer_completion": 468.266782,
+    "grpc/history_live/1/workspace_update/consumer_completion": 884.849688,
+    "grpc/history_live/4/delete/propagation": 768.704846,
+    "grpc/history_live/4/reporter_update/consumer_completion": 471.510968,
+    "grpc/history_live/4/workspace_update/consumer_completion": 781.185034
+  }
+}

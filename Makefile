@@ -388,17 +388,21 @@ test-performance:
 # Opt-in cluster workload; this target never invokes local performance tests.
 test-performance-ephemeral:
 	@profile="$${PERF_PROFILE:-full}"; \
-	rounds=100; if [ "$$profile" = small ]; then rounds=3; fi; \
+	rounds=100; history_depth=227872; history_depth_four=56968; \
+	if [ "$$profile" = small ]; then rounds=3; history_depth=40; history_depth_four=40; fi; \
 	PERF_PROFILE="$$profile" \
 	PERF_ROUNDS="$${PERF_ROUNDS:-$$rounds}" \
 	PERF_JOB_TIMEOUT_SECONDS="$${PERF_JOB_TIMEOUT_SECONDS:-2400}" \
 	PERF_OVERALL_TIMEOUT_SECONDS="$${PERF_OVERALL_TIMEOUT_SECONDS:-3600}" \
-	PERF_BASELINE="$${PERF_BASELINE-$(CURDIR)/test/performance/baseline-ephemeral-create-update-delete.json}" \
+	PERF_BASELINE="$${PERF_BASELINE-$(CURDIR)/test/performance/baseline-ephemeral-history-live.json}" \
 	BONFIRE_LOCAL_CONFIG="$${BONFIRE_LOCAL_CONFIG:-$(CURDIR)/test/performance/bonfire-ephemeral.yaml}" \
 	PERF_BONFIRE_SOURCE="$${PERF_BONFIRE_SOURCE:-file}" \
 	PERF_KAFKA_CONNECT_TAG="$${PERF_KAFKA_CONNECT_TAG:-latest}" \
 	PERF_SPICEDB_IMAGE="$${PERF_SPICEDB_IMAGE:-quay.io/redhat-services-prod/project-kessel-tenant/kessel-relations/spicedb:latest}" \
-	PERF_PARTIAL_CALIBRATION="$${PERF_PARTIAL_CALIBRATION:-true}" \
+	PERF_SCENARIOS="$${PERF_SCENARIOS:-history_live}" \
+	PERF_HISTORY_DEPTH="$${PERF_HISTORY_DEPTH:-$$history_depth}" \
+	PERF_HISTORY_DEPTH_4="$${PERF_HISTORY_DEPTH_4:-$$history_depth_four}" \
+	PERF_HISTORY_BATCH_ROUNDS="$${PERF_HISTORY_BATCH_ROUNDS:-3}" \
 	PERF_DATABASE_URL_FILE="$${PERF_DATABASE_URL_FILE:-env}" \
 	PERF_PLAINTEXT="$${PERF_PLAINTEXT:-true}" \
 	./scripts/performance/ephemeral-test.sh

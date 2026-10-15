@@ -26,9 +26,9 @@ func TestStatistics(t *testing.T) {
 	}
 }
 
-func TestPartialCalibrationScope(t *testing.T) {
+func TestFreshScenarioScope(t *testing.T) {
 	c := DefaultConfig()
-	c.PartialCalibration = true
+	c.Scenarios = []string{"fresh"}
 	c.DatabaseURLFile = "env"
 	c.ConnectorPolicyFile = "policy.json"
 	c.History = 0
@@ -36,8 +36,8 @@ func TestPartialCalibrationScope(t *testing.T) {
 		t.Fatal(err)
 	}
 	c.History = 40
-	if c.Validate() == nil {
-		t.Fatal("partial calibration must not claim history coverage")
+	if err := c.Validate(); err != nil {
+		t.Fatal("unused legacy history setting should not reject fresh selection", err)
 	}
 	c.History = 0
 	c.BaselineFile = "baseline.json"
@@ -48,7 +48,7 @@ func TestPartialCalibrationScope(t *testing.T) {
 
 func TestRateConfiguration(t *testing.T) {
 	c := DefaultConfig()
-	c.PartialCalibration = true
+	c.Scenarios = []string{"fresh"}
 	c.DatabaseURLFile = "env"
 	c.ConnectorPolicyFile = "policy.json"
 	c.History = 0

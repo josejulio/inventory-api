@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
-# Deploy and collect an in-cluster lifecycle or partial calibration workload. Never select a
+# Deploy and collect an in-cluster lifecycle workload. Never select a
 # namespace from current context, user reservations, or a cluster-wide listing.
 set -euo pipefail
 repo=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
+source "$repo/scripts/performance/progress.sh"
 bonfire=${BONFIRE:-bonfire}
 if ! command -v "$bonfire" >/dev/null 2>&1; then
     echo "Bonfire executable not found: $bonfire. Install bonfire on PATH or set BONFIRE to its executable." >&2
@@ -73,6 +74,7 @@ PYIDENTITY
     fi
 } | tee "$results/tested-images.txt"
 namespace=''
+runner_log_pid=''
 registry_auth_dir=''
 deployment_dir=''
 reservation_attempted=false
@@ -130,6 +132,12 @@ cleanup() {
     trap - EXIT INT TERM
     set +e
     collecting=true
+    stop_phase_watch
+    progress "Collecting results and diagnostics; artifacts: $results"
+    if [[ -n "$runner_log_pid" ]]; then
+        kill "$runner_log_pid" 2>/dev/null || true
+        wait "$runner_log_pid" 2>/dev/null || true
+    fi
     cleanup_outcome='no namespace allocated'
     collect
     collection_status=$?
@@ -143,6 +151,7 @@ cleanup() {
             cleanup_outcome='namespace retained'
             echo "Retained namespace $namespace; release with: $bonfire namespace release $namespace --force"
         else
+            progress "Releasing namespace $namespace"
             bounded "$bonfire" namespace release "$namespace" --force >> "$results/release.log" 2>&1
             release_status=$?
             if [[ "$release_status" == 0 ]]; then cleanup_outcome='reservation released'; else cleanup_outcome='reservation release failed'; fi
@@ -197,6 +206,7 @@ if os.environ.get('PERF_DATABASE_URL_FILE')=='env':
 print(json.dumps(m))
 PY
 oc whoami >/dev/null
+progress "Reserving an ephemeral namespace; logs: $results/reserve.log"
 reservation_attempted=true
 # --force suppresses the existing-reservation prompt; it does not release them.
 bounded "$bonfire" namespace reserve --name "$reservation" --duration "${reservation_seconds}s" --timeout 600 --force > "$results/reserve.out" 2> "$results/reserve.log"
@@ -209,18 +219,19 @@ print(lines[0])
 PY
 )
 printf '%s\n' "$namespace" > "$results/namespace.txt"
+progress "Namespace: $namespace; artifacts: $results"
 if [[ "$PERF_RUNNER_IMAGE" == auto || -n ${PERF_LOCAL_INVENTORY_IMAGE:-} ]]; then
     registry=$(bounded oc registry info --public)
     registry_auth_dir=$(mktemp -d /tmp/inventory-perf-registry.XXXXXX)
     bounded oc registry login --registry="$registry" --to="$registry_auth_dir/auth.json" > "$results/registry-login.log" 2>&1
 fi
 if [[ "$PERF_RUNNER_IMAGE" == auto ]]; then
-    bounded podman push --authfile "$registry_auth_dir/auth.json" --digestfile "$results/runner-digest.txt" "${PERF_LOCAL_RUNNER_IMAGE:-localhost/inventory-perf:ephemeral}" "docker://$registry/$namespace/performance-runner:run" > "$results/runner-push.log" 2>&1
+    run_phase "Publishing runner image to $namespace" "$results/runner-push.log" bounded podman push --authfile "$registry_auth_dir/auth.json" --digestfile "$results/runner-digest.txt" "${PERF_LOCAL_RUNNER_IMAGE:-localhost/inventory-perf:ephemeral}" "docker://$registry/$namespace/performance-runner:run"
     PERF_RUNNER_IMAGE="image-registry.openshift-image-registry.svc:5000/$namespace/performance-runner@$(cat "$results/runner-digest.txt")"
     export PERF_RUNNER_IMAGE
 fi
 if [[ -n ${PERF_LOCAL_INVENTORY_IMAGE:-} ]]; then
-    bounded podman push --authfile "$registry_auth_dir/auth.json" --digestfile "$results/inventory-digest.txt" "$PERF_LOCAL_INVENTORY_IMAGE" "docker://$registry/$namespace/inventory-api:run" > "$results/inventory-push.log" 2>&1
+    run_phase "Publishing Inventory image to $namespace" "$results/inventory-push.log" bounded podman push --authfile "$registry_auth_dir/auth.json" --digestfile "$results/inventory-digest.txt" "$PERF_LOCAL_INVENTORY_IMAGE" "docker://$registry/$namespace/inventory-api:run"
     INVENTORY_IMAGE="image-registry.openshift-image-registry.svc:5000/$namespace/inventory-api"
     IMAGE_TAG="run@$(cat "$results/inventory-digest.txt")"
     export INVENTORY_IMAGE IMAGE_TAG
@@ -231,8 +242,8 @@ if [[ -s "$results/inventory-image.txt" ]]; then
     echo "Deploying Inventory: $(cat "$results/inventory-image.txt")"
 fi
 # Provision the authorization datastore directly; there is no Relations API app.
-bounded oc -n "$namespace" apply -f "$deployment_dir/backend.json" > "$results/spicedb-deploy.log"
-bounded oc -n "$namespace" rollout status deployment/performance-spicedb-db --timeout=180s >> "$results/spicedb-deploy.log" 2>&1
+run_phase "Creating SpiceDB and its database" "$results/spicedb-deploy.log" bounded oc -n "$namespace" apply -f "$deployment_dir/backend.json"
+run_phase "Waiting for SpiceDB database readiness" "$results/spicedb-deploy.log" bounded oc -n "$namespace" rollout status deployment/performance-spicedb-db --timeout=180s
 params=(--local-config-path "$deployment_dir/bonfire.yaml")
 case "${PERF_BONFIRE_SOURCE:-appsre}" in
     appsre) ;;
@@ -243,20 +254,21 @@ params+=(-p "kessel-kafkaconnect/IMAGE_TAG=${PERF_KAFKA_CONNECT_TAG:-latest}")
 [[ -z ${INVENTORY_IMAGE:-} ]] || params+=(-p "kessel-inventory/INVENTORY_IMAGE=$INVENTORY_IMAGE")
 [[ -z ${IMAGE_TAG:-} ]] || params+=(-p "kessel-inventory/IMAGE_TAG=$IMAGE_TAG")
 remaining
-bounded "$bonfire" deploy kessel -C kessel-inventory --namespace "$namespace" --no-release-on-fail --timeout 600 "${params[@]}" > "$results/deploy.log" 2>&1
+run_phase "Deploying Inventory, database, Kafka/CDC and SpiceDB in $namespace (includes migrations and readiness waits)" "$results/deploy.log" bounded "$bonfire" deploy kessel -C kessel-inventory --namespace "$namespace" --no-release-on-fail --timeout 600 "${params[@]}"
 # Bonfire waits for deployment init containers (including migrations). Explicit
 # Kafka conditions supplement workload readiness; API preflight proves CDC flow.
 # The shared Kafka Connect template currently includes an unrelated HBI source.
 # Remove it before measurements; HBI requests are produced by this runner only.
 bounded oc -n "$namespace" delete kafkaconnector hbi-outbox-connector --ignore-not-found=true > "$results/hbi-connector-removal.log"
 for kind in kafka kafkaconnect; do
-    bounded oc -n "$namespace" wait "$kind" --all --for=condition=Ready --timeout=300s >> "$results/readiness.log" 2>&1
+    run_phase "Waiting for $kind readiness" "$results/readiness.log" bounded oc -n "$namespace" wait "$kind" --all --for=condition=Ready --timeout=300s
 done
-bounded oc -n "$namespace" wait kafkaconnector "${PERF_CONNECTOR_NAME:-kessel-inventory-source-connector}" --for=condition=Ready --timeout=300s >> "$results/readiness.log" 2>&1
-bounded oc -n "$namespace" rollout status deployment/kessel-inventory-api --timeout=300s >> "$results/readiness.log" 2>&1
+run_phase "Waiting for Inventory CDC connector readiness" "$results/readiness.log" bounded oc -n "$namespace" wait kafkaconnector "${PERF_CONNECTOR_NAME:-kessel-inventory-source-connector}" --for=condition=Ready --timeout=300s
+run_phase "Waiting for Inventory API readiness" "$results/readiness.log" bounded oc -n "$namespace" rollout status deployment/kessel-inventory-api --timeout=300s
 if [[ -n ${PERF_CREDENTIALS_MANIFEST:-} ]]; then
     bounded oc -n "$namespace" apply -f "$PERF_CREDENTIALS_MANIFEST" > /dev/null
 fi
+progress "Recording deployment settings and preparing the workload job"
 # Capture stable deployment settings before adding the workload Job.
 bounded oc -n "$namespace" get deployments,statefulsets,pods,kafkatopics -o json | python3 "$repo/scripts/performance/metadata.py" resources --runner-image "$PERF_RUNNER_IMAGE" --runner-job-file "$repo/test/performance/ephemeral/job.yaml" > "$results/resource-metadata.json"
 bounded oc -n "$namespace" get configmap "${PERF_INVENTORY_CONFIGMAP:-inventory-api-config}" -o json | python3 "$repo/scripts/performance/metadata.py" consistency > "$results/consistency-metadata.json"
@@ -285,6 +297,15 @@ job['items'][1]['spec']['template']['spec']['containers'][0]['image']=sys.argv[2
 print(json.dumps(job))
 PY
 
+# Stream phase messages into the invoking terminal. Job status and recovered
+# artifacts remain authoritative if the log connection is interrupted.
+echo "Following workload progress in namespace $namespace (oc logs -f job/performance-runner)."
+start_runner_logs() {
+    oc -n "$namespace" logs -f job/performance-runner -c runner --timestamps --pod-running-timeout=120s &
+    runner_log_pid=$!
+}
+start_runner_logs
+
 while true; do
     remaining
     bounded oc -n "$namespace" get job performance-runner -o json > "$results/job-status.json"
@@ -295,5 +316,11 @@ print('success' if s.get('succeeded',0) else 'failed' if s.get('failed',0) else 
 PY
 )
     case "$state" in success) break;; failed) exit 1;; esac
+    if ! kill -0 "$runner_log_pid" 2>/dev/null; then
+        log_status=0
+        wait "$runner_log_pid" || log_status=$?
+        progress "Runner log stream closed (exit $log_status); reconnecting and replaying available logs. Job is still running."
+        start_runner_logs
+    fi
     sleep 5
 done

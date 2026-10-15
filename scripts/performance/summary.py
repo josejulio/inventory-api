@@ -17,14 +17,15 @@ def consumer_throughput(path):
             result = json.loads(file.read_text())
             if "operations" not in result:
                 continue
-            start, end = (datetime.fromisoformat(result[key].replace("Z", "+00:00"))
-                          for key in ("measurement_start", "measurement_end"))
-            seconds = (end - start).total_seconds()
-            if seconds <= 0 or start.tzinfo is None or end.tzinfo is None:
-                return unavailable
-            windows.append({"start": start, "end": end, "duration_seconds": seconds,
-                            "protocol": result.get("protocol"), "scenario": result.get("scenario"),
-                            "workers": result.get("workers"), "messages": 0})
+            intervals = result.get('measurement_windows') or [{'start': result.get('measurement_start'), 'end': result.get('measurement_end')}]
+            for interval in intervals:
+                start, end = (datetime.fromisoformat(interval[key].replace("Z", "+00:00")) for key in ('start', 'end'))
+                seconds = (end - start).total_seconds()
+                if seconds <= 0 or start.tzinfo is None or end.tzinfo is None:
+                    return unavailable
+                windows.append({"start": start, "end": end, "duration_seconds": seconds,
+                                "protocol": result.get("protocol"), "scenario": result.get("scenario"),
+                                "workers": result.get("workers"), "messages": 0})
         windows.sort(key=lambda window: window['start'])
         if not windows or any(left['end'] > right['start'] for left, right in zip(windows, windows[1:])):
             return unavailable
@@ -90,6 +91,23 @@ def summarize(path, exit_status=None, cleanup=None):
         failures.append(status["error"])
     rate_evidence = read(path / 'runner/rate-rounds.json')
     failures.extend(f"Rate round {index}: {failure}" for index, result in enumerate(rate_evidence.get('rounds', []), 1) for failure in result.get('failures', []))
+    selected = config.get('scenarios', [])
+    # Setup failures precede the runner and cannot establish scenario coverage.
+    # Once a job or runner artifact exists, missing results remain a failure.
+    setup_failed = (exit_status is not None and exit_status != 0 and not results
+                    and not (path / 'runner/status.json').exists()
+                    and not (path / 'job-status.json').exists()
+                    and not (path / 'job-create.log').exists())
+    if selected and not setup_failed:
+        expected = {(config.get('protocol', 'grpc'), scenario, workers) for scenario in selected for workers in (1, 4)}
+        actual = {(r.get('protocol'), r.get('scenario'), r.get('workers')) for r in results}
+        for case in sorted(expected - actual):
+            failures.append('Missing scenario coverage: ' + '/'.join(map(str, case)))
+        for case in sorted(actual - expected):
+            failures.append('Unexpected scenario coverage: ' + '/'.join(map(str, case)))
+    run_ids = {result['run_id'] for result in results if result.get('run_id')}
+    if len(run_ids) > 1:
+        failures.append('Mixed runner IDs in recovered scenario artifacts')
     counts = [0] * 6
     rows = []
     for result in results:
@@ -111,14 +129,28 @@ def summarize(path, exit_status=None, cleanup=None):
         lines.append("Cleanup: release attempted; see release.log")
     if exit_status is not None:
         lines.append(f"Launcher exit status: {exit_status}")
+    if setup_failed:
+        lines.append("Workload not started: launcher failed during setup; scenario coverage checks skipped.")
     profile = config.get("profile") or (results[0].get("profile") if results else "unknown")
     lines += [f"Profile: {profile}", f"Samples: {counts[0]} measured API calls; {counts[1]} pipeline observations", f"API errors/timeouts: {counts[2]}/{counts[3]}; propagation errors/timeouts: {counts[4]}/{counts[5]}"]
     if "background" in config:
-        lines.append(f"Workload: {config['background']:,} background resources/scenario; {config.get('history', 0):,} history versions; payload {config.get('payload_bytes', '?')} bytes; {config.get('rounds', '?')} rounds/worker.")
+        legacy_history = f"{config.get('history', 0):,} legacy history versions; " if not config.get('scenarios') or 'history' in config['scenarios'] else ''
+        lines.append(f"Workload: {config['background']:,} background resources/scenario; {legacy_history}payload {config.get('payload_bytes', '?')} bytes; {config.get('rounds', '?')} rounds/worker.")
+    if config.get('scenarios'):
+        lines.append('Selected scenarios: ' + ', '.join(config['scenarios']))
+    for result in results:
+        if result.get('scenario') == 'history_live':
+            fixture = result.get('fixture', {})
+            lines.append(f"Live history/{result.get('workers')}: depth {fixture.get('history_depth', '?')} per target; {result.get('seeded_history_rows', 0):,} total seeded rows; setup {result.get('setup_seconds', 0):.2f}s; measurement {result.get('measurement_seconds', 0):.2f}s; cleanup {result.get('cleanup_seconds', 0):.2f}s.")
+            for operation, stats in sorted(result['operations'].items()):
+                if operation != 'delete':
+                    timing = stats.get('consumer_completion', {})
+                    lines.append(f"  {operation}: request-to-correlated-consumer p95 {timing.get('p95_ms', 0):.2f} ms ({timing.get('count', 0)} samples; includes transport and CDC).")
     for result in results:
         database = result.get("database", {})
         if "database_bytes" in database:
-            lines.append(f"Database before {result.get('scenario', '?')}/{result.get('workers', '?')} workers: {database['database_bytes'] / 1024**3:.3f} GiB (physical footprint includes indexes and reusable pages).")
+            label = "Largest sampled fixture database for" if result.get("scenario") == "history_live" else "Database before"
+            lines.append(f"{label} {result.get('scenario', '?')}/{result.get('workers', '?')} workers: {database['database_bytes'] / 1024**3:.3f} GiB (physical footprint includes indexes and reusable pages).")
     for result in results:
         duration = result.get('measurement_seconds', 0)
         if duration > 0 and not result.get('failures') and all(not stats.get(key, 0) for stats in result['operations'].values() for key in ('errors', 'timeouts', 'propagation_errors', 'propagation_timeouts')):

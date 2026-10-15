@@ -89,8 +89,8 @@ func TestBaselineEntrySet(t *testing.T) {
 
 func TestPartialResultValidation(t *testing.T) {
 	c := DefaultConfig()
-	c.PartialCalibration = true
-	r := Result{Workers: 1, Operations: map[string]Operation{}}
+	c.Scenarios = []string{"fresh"}
+	r := Result{Scenario: "fresh", Workers: 1, Operations: map[string]Operation{}}
 	for _, op := range []string{"create", "workspace_update", "unchanged_update", "delete"} {
 		count := c.Rounds
 		if op == "workspace_update" {
@@ -104,23 +104,23 @@ func TestPartialResultValidation(t *testing.T) {
 	deletion := r.Operations["delete"]
 	delete(r.Operations, "delete")
 	if validateFixtureResult(r, c) == nil {
-		t.Fatal("partial calibration omitted deletion samples")
+		t.Fatal("fresh scenario omitted deletion samples")
 	}
 	r.Operations["delete"] = deletion
-	c.PartialCalibration = false
+	c.Scenarios = nil
 	if validateFixtureResult(r, c) == nil {
 		t.Fatal("partial results accepted as full lifecycle coverage")
 	}
-	c.PartialCalibration = true
+	c.Scenarios = []string{"fresh"}
 	delete(r.Operations, "unchanged_update")
 	if validateFixtureResult(r, c) == nil {
-		t.Fatal("partial calibration omitted unchanged completion")
+		t.Fatal("fresh scenario omitted unchanged completion")
 	}
 }
 
 func TestFreshDeleteBaselineScope(t *testing.T) {
 	c := DefaultConfig()
-	c.PartialCalibration = true
+	c.Scenarios = []string{"fresh"}
 	c.Profile = "full"
 	c.History = 0
 	c.Rounds = 100

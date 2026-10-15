@@ -113,12 +113,15 @@ func runFixtures(ctx context.Context, t *transport, runID string) error {
 		}
 		baseline = &b
 	}
-	scenarios := []string{"fresh", "history"}
-	if c.PartialCalibration {
-		scenarios = scenarios[:1]
-	}
-	for _, scenario := range scenarios {
+	for _, scenario := range c.selectedScenarios() {
 		for _, workers := range []int{1, 4} {
+			freshLifecycle := c.freshLifecycle(scenario)
+			if scenario == "history_live" {
+				if err := runHistoryLive(ctx, t, f, slot, runID, workers, baseline); err != nil {
+					return err
+				}
+				continue
+			}
 			// Each scenario has its own natural-key scope and equivalent live row counts.
 			// Scoped deletion and VACUUM reuse pages, but physical size may retain growth;
 			// report that footprint explicitly rather than claiming a new database.
@@ -167,9 +170,8 @@ func runFixtures(ctx context.Context, t *transport, runID string) error {
 			if err != nil {
 				return err
 			}
-			r := Result{RunID: runID, Instance: instance, Scenario: scenario, Fixture: &scope, Database: &m, Protocol: c.Protocol, Workers: workers, Profile: c.Profile, Rounds: c.Rounds, PayloadBytes: c.PayloadBytes, PollMS: c.PollInterval.Milliseconds(), RequestTimeoutMS: c.RequestTimeout.Milliseconds(), PropagationTimeoutMS: c.PropagationTimeout.Milliseconds(), WriteVisibility: "MINIMIZE_LATENCY", CheckConsistency: "CheckForUpdate", LatencyLimits: "calibration; no thresholds", Operations: map[string]Operation{}}
-			r.PartialCalibration = c.PartialCalibration
-			if c.PartialCalibration {
+			r := Result{RunID: runID, Instance: instance, Scenario: scenario, Fixture: &scope, Database: &m, Protocol: c.Protocol, Workers: workers, Profile: c.Profile, Rounds: c.Rounds, PayloadBytes: c.PayloadBytes, PollMS: c.PollInterval.Milliseconds(), RequestTimeoutMS: c.RequestTimeout.Milliseconds(), PropagationTimeoutMS: c.PropagationTimeout.Milliseconds(), WriteVisibility: "MINIMIZE_LATENCY", CheckConsistency: "CheckForUpdate", LatencyLimits: "informational; no thresholds", Operations: map[string]Operation{}}
+			if freshLifecycle {
 				r.ExcludedCoverage = []string{"history", "recreate"}
 			}
 			samples, propagation := map[string][]time.Duration{}, map[string][]time.Duration{}
@@ -198,7 +200,7 @@ func runFixtures(ctx context.Context, t *transport, runID string) error {
 					}
 					defer listener.close()
 					for round := 0; round < c.Rounds; round++ {
-						if c.PartialCalibration {
+						if freshLifecycle {
 							id = fmt.Sprintf("%s-target-%d-round-%d", runID, w, round)
 							ws = uuid.NewString()
 						} else if round > 0 {
@@ -217,7 +219,7 @@ func runFixtures(ctx context.Context, t *transport, runID string) error {
 							ops = append(ops, "workspace_update")
 						}
 						ops = append(ops, "unchanged_update", "delete")
-						if !c.PartialCalibration {
+						if !freshLifecycle {
 							ops = append(ops, "recreate")
 						}
 						version := 0
@@ -303,7 +305,7 @@ func runFixtures(ctx context.Context, t *transport, runID string) error {
 						}
 
 					}
-					if c.PartialCalibration {
+					if freshLifecycle {
 						return
 					}
 					// Verify final state before cleanup, then drain the deletion before SQL.
@@ -336,9 +338,13 @@ func runFixtures(ctx context.Context, t *transport, runID string) error {
 					r.Failures = append(r.Failures, err.Error())
 				}
 			}
-			if baseline != nil {
+			if len(r.Failures) > 0 {
+				r.FailureKind = "correctness"
+			}
+			if baseline != nil && len(r.Failures) == 0 {
 				r.LatencyLimits = "calibrated baseline; small profile skips latency gates"
 				if err = checkBaseline(r, *baseline); err != nil {
+					r.FailureKind = "latency"
 					r.Failures = append(r.Failures, err.Error())
 				}
 			}
@@ -346,7 +352,7 @@ func runFixtures(ctx context.Context, t *transport, runID string) error {
 				return err
 			}
 			if len(r.Failures) > 0 {
-				return fmt.Errorf("fixture workload correctness failure; see partial results")
+				return fmt.Errorf("fixture workload failed: %s; see partial results", r.Failures[0])
 			}
 			if err = f.drain(ctx, slot, max(c.PropagationTimeout, 2*time.Minute), c.PollInterval, advance); err != nil {
 				return err

@@ -42,6 +42,7 @@ type Stats struct {
 
 // Operation separates API completion latency from relationship observation.
 type Operation struct {
+	Completion          Stats `json:"consumer_completion,omitempty"`
 	API                 Stats `json:"api"`
 	Propagation         Stats `json:"propagation"`
 	Errors              int   `json:"errors"`
@@ -50,9 +51,20 @@ type Operation struct {
 	PropagationTimeouts int   `json:"propagation_timeouts"`
 }
 
+// MeasurementWindow excludes setup and cleanup gaps between batches.
+type MeasurementWindow struct {
+	Start time.Time `json:"start"`
+	End   time.Time `json:"end"`
+}
+
 // Result includes partial results even when correctness or propagation fails.
 type Result struct {
-	PartialCalibration   bool                 `json:"partial_calibration,omitempty"`
+	MeasurementWindows []MeasurementWindow `json:"measurement_windows,omitempty"`
+	SetupSeconds       float64             `json:"setup_seconds,omitempty"`
+	CleanupSeconds     float64             `json:"cleanup_seconds,omitempty"`
+	SeededHistoryRows  int64               `json:"seeded_history_rows,omitempty"`
+	FailureKind        string              `json:"failure_kind,omitempty"`
+
 	ExcludedCoverage     []string             `json:"excluded_coverage,omitempty"`
 	RunnerRevision       string               `json:"runner_revision,omitempty"`
 	CompletionSignal     string               `json:"completion_signal,omitempty"`
@@ -307,7 +319,7 @@ func Run(ctx context.Context, c Config) error {
 		return runFixtures(ctx, t, runID)
 	}
 	for _, workers := range []int{1, 4} {
-		r := Result{RunID: runID, Instance: c.Instance, Protocol: c.Protocol, Workers: workers, Profile: c.Profile, Rounds: c.Rounds, PayloadBytes: c.PayloadBytes, PollMS: c.PollInterval.Milliseconds(), RequestTimeoutMS: c.RequestTimeout.Milliseconds(), PropagationTimeoutMS: c.PropagationTimeout.Milliseconds(), WriteVisibility: "MINIMIZE_LATENCY", CheckConsistency: "CheckForUpdate (strongly consistent)", LatencyLimits: "informational; calibration pending", Operations: map[string]Operation{}}
+		r := Result{RunID: runID, Instance: c.Instance, Protocol: c.Protocol, Workers: workers, Profile: c.Profile, Rounds: c.Rounds, PayloadBytes: c.PayloadBytes, PollMS: c.PollInterval.Milliseconds(), RequestTimeoutMS: c.RequestTimeout.Milliseconds(), PropagationTimeoutMS: c.PropagationTimeout.Milliseconds(), WriteVisibility: "MINIMIZE_LATENCY", CheckConsistency: "CheckForUpdate (strongly consistent)", LatencyLimits: "informational; no thresholds", Operations: map[string]Operation{}}
 		api, pipe := map[string][]time.Duration{}, map[string][]time.Duration{}
 		var mu sync.Mutex
 		var wg sync.WaitGroup
@@ -439,9 +451,6 @@ func writeResult(dir string, r Result) error {
 		return e
 	}
 	var out strings.Builder
-	if r.PartialCalibration {
-		fmt.Fprintln(&out, "PARTIAL CALIBRATION: fresh create, updates and delete; history and recreate excluded")
-	}
 	fmt.Fprintf(&out, "%s %s / %d workers: %.2f successful calls/s (closed loop includes verification and cleanup)\nLatency limits: %s\n", r.Protocol, scenario, r.Workers, r.Throughput, r.LatencyLimits)
 	for _, op := range []string{"create", "workspace_update", "unchanged_update", "delete", "recreate"} {
 		s, ok := r.Operations[op]

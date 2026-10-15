@@ -13,10 +13,11 @@ import (
 // Fixture describes the isolated SQL scope and API-established history targets.
 // Background rows deliberately have no Relations state and emit no WAL messages.
 type Fixture struct {
-	Instance   string   `json:"instance"`
-	Background int      `json:"background"`
-	History    int      `json:"history"`
-	Targets    []string `json:"targets"`
+	HistoryDepth int      `json:"history_depth,omitempty"`
+	Instance     string   `json:"instance"`
+	Background   int      `json:"background"`
+	History      int      `json:"history"`
+	Targets      []string `json:"targets"`
 }
 
 // DatabaseMetadata records the physical footprint, including reused pages and
@@ -208,17 +209,21 @@ func (f *fixtures) verifySeed(ctx context.Context, scope Fixture) error {
 }
 func (f *fixtures) verifyState(ctx context.Context, instance, id string, version, generation int, tombstone bool) error {
 	var v, g int
-	var deleted bool
-	err := f.pool.QueryRow(ctx, `SELECT representation_version,generation,tombstone FROM reporter_resources WHERE local_resource_id=$1 AND reporter_instance_id=$2 AND reporter_type='hbi' AND resource_type='host'`, id, instance).Scan(&v, &g, &deleted)
+	var deleted, currentDeleted bool
+	err := f.pool.QueryRow(ctx, `SELECT rr.representation_version,rr.generation,rr.tombstone,rp.tombstone FROM reporter_resources rr JOIN reporter_representations rp ON rp.reporter_resource_id=rr.id AND rp.version=rr.representation_version AND rp.generation=rr.generation WHERE rr.local_resource_id=$1 AND rr.reporter_instance_id=$2 AND rr.reporter_type='hbi' AND rr.resource_type='host'`, id, instance).Scan(&v, &g, &deleted, &currentDeleted)
 	if err != nil {
 		return err
 	}
-	if v != version || g != generation || deleted != tombstone {
-		return fmt.Errorf("persisted state for %s: version=%d generation=%d tombstone=%t; expected %d/%d/%t", id, v, g, deleted, version, generation, tombstone)
+	if v != version || g != generation || deleted != tombstone || currentDeleted != tombstone {
+		return fmt.Errorf("persisted state for %s: version=%d generation=%d tombstone=%t current_tombstone=%t; expected %d/%d/%t", id, v, g, deleted, currentDeleted, version, generation, tombstone)
 	}
 	return nil
 }
 func (f *fixtures) cleanup(ctx context.Context, instance string) error {
+	return f.cleanupTargets(ctx, instance, nil)
+}
+
+func (f *fixtures) cleanupTargets(ctx context.Context, instance string, targets []string) error {
 	tx, err := f.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.Serializable})
 	if err != nil {
 		return err
@@ -227,7 +232,7 @@ func (f *fixtures) cleanup(ctx context.Context, instance string) error {
 	// Remove only resources exclusive to this scenario. Reject correlation to a
 	// different reporter rather than deleting a resource shared with that reporter.
 	var shared int
-	err = tx.QueryRow(ctx, `SELECT count(*) FROM reporter_resources other WHERE other.reporter_instance_id<>$1 AND other.resource_id IN (SELECT resource_id FROM reporter_resources WHERE reporter_instance_id=$1)`, instance).Scan(&shared)
+	err = tx.QueryRow(ctx, `SELECT count(*) FROM reporter_resources other WHERE other.reporter_instance_id<>$1 AND other.resource_id IN (SELECT resource_id FROM reporter_resources WHERE reporter_instance_id=$1 AND ($2::text[] IS NULL OR local_resource_id=ANY($2)))`, instance, targets).Scan(&shared)
 	if err != nil {
 		return err
 	}
@@ -235,7 +240,7 @@ func (f *fixtures) cleanup(ctx context.Context, instance string) error {
 		return fmt.Errorf("fixture resources are shared; refusing cleanup")
 	}
 	var resourceIDs []string
-	rows, err := tx.Query(ctx, `SELECT resource_id::text FROM reporter_resources WHERE reporter_instance_id=$1`, instance)
+	rows, err := tx.Query(ctx, `SELECT resource_id::text FROM reporter_resources WHERE reporter_instance_id=$1 AND ($2::text[] IS NULL OR local_resource_id=ANY($2))`, instance, targets)
 	if err != nil {
 		return err
 	}
@@ -254,11 +259,11 @@ func (f *fixtures) cleanup(ctx context.Context, instance string) error {
 	// Common representation FKs vary across schema revisions: delete children
 	// explicitly, without TRUNCATE, CASCADE, or touching unrelated instances.
 	for _, q := range []string{
-		`DELETE FROM reporter_representations WHERE reporter_resource_id IN (SELECT id FROM reporter_resources WHERE reporter_instance_id=$1)`,
-		`DELETE FROM common_representations WHERE resource_id IN (SELECT resource_id FROM reporter_resources WHERE reporter_instance_id=$1)`,
-		`DELETE FROM reporter_resources WHERE reporter_instance_id=$1`,
+		`DELETE FROM reporter_representations WHERE reporter_resource_id IN (SELECT id FROM reporter_resources WHERE reporter_instance_id=$1 AND ($2::text[] IS NULL OR local_resource_id=ANY($2)))`,
+		`DELETE FROM common_representations WHERE resource_id IN (SELECT resource_id FROM reporter_resources WHERE reporter_instance_id=$1 AND ($2::text[] IS NULL OR local_resource_id=ANY($2)))`,
+		`DELETE FROM reporter_resources WHERE reporter_instance_id=$1 AND ($2::text[] IS NULL OR local_resource_id=ANY($2))`,
 	} {
-		if _, err = tx.Exec(ctx, q, instance); err != nil {
+		if _, err = tx.Exec(ctx, q, instance, targets); err != nil {
 			return err
 		}
 	}
@@ -286,8 +291,11 @@ func (f *fixtures) metadata(ctx context.Context) (DatabaseMetadata, error) {
 	return m, nil
 }
 func (f *fixtures) analyze(ctx context.Context) error {
+	// Fixture indexes can make parallel VACUUM request more dynamic shared
+	// memory than the deployment container provides. Keep setup maintenance
+	// serial without changing application query parallelism or DB settings.
 	for _, table := range []string{"resource", "reporter_resources", "reporter_representations", "common_representations"} {
-		if _, err := f.pool.Exec(ctx, "VACUUM (ANALYZE) "+table); err != nil {
+		if _, err := f.pool.Exec(ctx, "VACUUM (ANALYZE, PARALLEL 0) "+table); err != nil {
 			return err
 		}
 	}

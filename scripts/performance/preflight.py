@@ -39,7 +39,7 @@ def resolve(env):
     c = {'profile': profile, 'protocol': protocol,
          'endpoint': env.get('PERF_ENDPOINT', 'kessel-inventory-api:9000'),
          'health_url': env.get('PERF_HEALTH_URL', 'http://kessel-inventory-api:8000/api/kessel/v1/livez'),
-         'plaintext': boolean('PERF_PLAINTEXT'), 'partial_calibration': boolean('PERF_PARTIAL_CALIBRATION'),
+         'plaintext': boolean('PERF_PLAINTEXT'),
          'rounds': integer('PERF_ROUNDS', 20 if full else 3),
          'payload_bytes': integer('PERF_PAYLOAD_BYTES', 1024 if full else 128),
          'background': integer('PERF_BACKGROUND', 100000 if full else 100, minimum=0),
@@ -50,13 +50,26 @@ def resolve(env):
             ('poll_interval', 'PERF_POLL_MS', 100, 10**6),
             ('run_timeout', 'PERF_JOB_TIMEOUT_SECONDS', 1200, 10**9)):
         c[field] = integer(key, default, scale=scale) * scale
-    c['history'] = integer('PERF_HISTORY', 0 if c['partial_calibration'] else (227872 if full else 40), minimum=0)
+    c['history'] = integer('PERF_HISTORY', 0 if env.get('PERF_SCENARIOS') == 'fresh' else (227872 if full else 40), minimum=0)
     database = env.get('PERF_DATABASE_URL_FILE', '')
+    default_scenarios = 'fresh,history'
+    c['scenarios'] = env.get('PERF_SCENARIOS', default_scenarios).split(',')
+    if len(set(c['scenarios'])) != len(c['scenarios']) or any(v not in ('fresh', 'history', 'history_live') for v in c['scenarios']):
+        raise ValueError('PERF_SCENARIOS must select distinct fresh, history or history_live scenarios')
+    c['history_batch_rounds'] = integer('PERF_HISTORY_BATCH_ROUNDS', 1)
+    if c['history_batch_rounds'] > 100:
+        raise ValueError('PERF_HISTORY_BATCH_ROUNDS must be 1..100')
+    if env.get('PERF_HISTORY_DEPTH_4'):
+        c['history_depth_four_workers'] = integer('PERF_HISTORY_DEPTH_4', 2, minimum=2)
+    c['history_depth'] = integer('PERF_HISTORY_DEPTH', 227872 if full else 40, minimum=2)
+    if 'PERF_SCENARIOS' in env and not database:
+        raise ValueError('explicit scenario selection requires database fixtures')
+    if 'history_live' in c['scenarios'] and not database:
+        raise ValueError('history_live requires database fixtures')
+
     if full and not database:
         raise ValueError('full profile requires PERF_DATABASE_URL_FILE')
-    if c['partial_calibration'] and (not database or c['history'] != 0):
-        raise ValueError('fresh workload requires database fixtures and zero history')
-    if database and not c['partial_calibration'] and c['history'] < 8:
+    if database and 'history' in c['scenarios'] and c['history'] < 8:
         raise ValueError('history must be >= 8 for the four-worker lifecycle workload')
     if c['poll_interval'] >= c['propagation_timeout'] or not c['endpoint'] or not c['health_url']:
         raise ValueError('endpoints must be set and polling must be below the propagation timeout')
@@ -65,7 +78,7 @@ def resolve(env):
         if any(not re.fullmatch(r'[0-9]+', value) or not 1 <= int(value) <= 60000 for value in rates):
             raise ValueError('PERF_MESSAGE_RATES must be comma-separated rates between 1 and 60000 writes/minute')
         seconds = integer('PERF_RATE_SECONDS', 60)
-        if seconds > 600 or not database or not c['partial_calibration']:
+        if seconds > 600 or not database or not (c['scenarios'] == ['fresh'] and 'PERF_SCENARIOS' in env):
             raise ValueError('rate rounds require fresh database fixtures and 1..600 seconds per round')
         if any(int(rate) * seconds / 60 > 100000 for rate in rates):
             raise ValueError('rate rounds allow at most 100000 scheduled writes per round')
@@ -103,12 +116,15 @@ def resolve(env):
             raise ValueError('baseline enforcement requires a digest-pinned remote runner or auto')
         try:
             b = json.loads(Path(baseline_path).read_text())
-            operations = ['create', 'workspace_update', 'unchanged_update', 'delete']
-            scenarios = ['fresh']
-            if not c['partial_calibration']:
-                operations.append('recreate')
-                scenarios.append('history')
-            keys = {f'{protocol}/{scenario}/{workers}/{op}/{kind}' for scenario in scenarios for workers in (1, 4) for op in operations for kind in ('api', 'propagation')}
+            def operations(scenario):
+                if scenario == 'history_live':
+                    return ['workspace_update', 'reporter_update', 'delete']
+                return ['create', 'workspace_update', 'unchanged_update', 'delete'] + ([] if scenario == 'fresh' and 'PERF_SCENARIOS' in env else ['recreate'])
+            def kinds(scenario, op):
+                if scenario == 'history_live':
+                    return ['propagation'] if op == 'delete' else ['consumer_completion']
+                return ['api', 'propagation']
+            keys = {f'{protocol}/{scenario}/{workers}/{op}/{kind}' for scenario in c['scenarios'] for workers in (1, 4) for op in operations(scenario) for kind in kinds(scenario, op)}
             if set(b['p95_limits_ms']) != keys or any(isinstance(v, bool) or not isinstance(v, (int, float)) or not math.isfinite(v) or v <= 0 for v in b['p95_limits_ms'].values()):
                 raise ValueError()
             if full and c['rounds'] < 100:
@@ -116,6 +132,8 @@ def resolve(env):
         except (OSError, ValueError, TypeError, KeyError, AttributeError):
             raise ValueError('PERF_BASELINE must be readable JSON with sufficient samples and all positive finite p95 limits for the selected cases') from None
         c['baseline_file'] = '/config/baseline-ephemeral.json'
+    if 'PERF_SCENARIOS' not in env:
+        c.pop('scenarios')
     return c
 
 

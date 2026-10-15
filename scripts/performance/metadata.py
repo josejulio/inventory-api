@@ -10,6 +10,7 @@ import yaml
 def resources(document, runner_image):
     """Discard pod IDs/timestamps and retain images, capacity and partitions."""
     deployments, images, topics = [], {}, []
+    observed_resources = {}
     for item in document.get("items", []):
         kind = item["kind"]
         name = item["metadata"]["name"]
@@ -24,6 +25,11 @@ def resources(document, runner_image):
                                                              or e["name"].startswith("INVENTORY_API_CONSISTENCY_")}}
                                                for c in sorted(containers, key=lambda c: c["name"])]})
         elif kind == "Pod":
+            # Operators can manage pods without Deployments or StatefulSets.
+            # Keep their actual capacity without pod IDs or environment values.
+            for container in spec.get("containers", []):
+                capacity = {key: container[key] for key in ("name", "image", "resources") if key in container}
+                observed_resources[json.dumps(capacity, sort_keys=True)] = capacity
             # Keep all observed image digests during a rollout without repeating
             # them for each replica.
             for c in item.get("status", {}).get("containerStatuses", []):
@@ -34,6 +40,7 @@ def resources(document, runner_image):
                            "replicas": spec.get("replicas")})
     return {"runner_image": runner_image,
             "deployments": sorted(deployments, key=lambda d: (d["kind"], d["name"])),
+            "observed_container_resources": [observed_resources[key] for key in sorted(observed_resources)],
             "image_digests": {k: sorted(v) for k, v in sorted(images.items())},
             "kafka_topics": sorted(topics, key=lambda t: t["name"])}
 

@@ -19,6 +19,13 @@ def inventory_template(document):
             spec = obj["spec"]
             spec["dependencies"] = [name for name in spec.get("dependencies", []) if name != "kessel-relations"]
             for deployment in spec.get("deployments", []):
+                # Owned performance namespaces always migrate their isolated DB.
+                # Use the common CLI accepted by both comparison revisions;
+                # older binaries predate the optional --enabled flag.
+                for container in deployment.get("podSpec", {}).get("initContainers", []):
+                    if container.get("name") == "migration" and container.get("args", [])[:1] == ["migrate"]:
+                        container["args"] = ["migrate"]
+
                 for env in deployment.get("podSpec", {}).get("env", []):
                     if env["name"] == "INVENTORY_API_AUTHZ_SPICEDB_ENDPOINT":
                         env["value"] = "performance-spicedb:50051"

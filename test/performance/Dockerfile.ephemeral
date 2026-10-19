@@ -1,0 +1,14 @@
+FROM golang:1.26.8 AS build
+WORKDIR /src
+COPY go.mod go.sum ./
+RUN go mod download
+COPY api/ api/
+COPY test/performance/ephemeral/ test/performance/ephemeral/
+COPY test/performance/cmd/ephemeral/ test/performance/cmd/ephemeral/
+ARG SOURCE_REVISION=unknown
+RUN CGO_ENABLED=0 go build -ldflags "-X main.sourceRevision=${SOURCE_REVISION}" -trimpath -o /runner ./test/performance/cmd/ephemeral
+FROM registry.access.redhat.com/ubi9/ubi-micro:9.6
+COPY --from=build /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
+COPY --from=build /runner /runner
+USER 1001
+ENTRYPOINT ["/runner"]

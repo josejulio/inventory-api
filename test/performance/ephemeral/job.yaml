@@ -1,0 +1,68 @@
+# Rendered by scripts/performance/ephemeral-test.sh; all objects are scoped to
+# the namespace returned by this run's named Bonfire reservation.
+apiVersion: v1
+kind: List
+items:
+  - apiVersion: v1
+    kind: PersistentVolumeClaim
+    metadata:
+      name: performance-results
+    spec:
+      accessModes: [ReadWriteOnce]
+      resources:
+        requests:
+          storage: 1Gi
+  - apiVersion: batch/v1
+    kind: Job
+    metadata:
+      name: performance-runner
+    spec:
+      backoffLimit: 0
+      activeDeadlineSeconds: 28800
+      template:
+        metadata:
+          labels:
+            app: performance-runner
+        spec:
+          restartPolicy: Never
+          automountServiceAccountToken: false
+          securityContext:
+            runAsNonRoot: true
+            seccompProfile:
+              type: RuntimeDefault
+          containers:
+            - name: runner
+              image: RUNNER_IMAGE
+              args: ["-config", "/config/config.json"]
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities:
+                  drop: [ALL]
+              resources:
+                requests:
+                  cpu: 500m
+                  memory: 256Mi
+                limits:
+                  cpu: "2"
+                  memory: 512Mi
+              volumeMounts:
+                - name: results
+                  mountPath: /results
+                - name: config
+                  mountPath: /config
+                  readOnly: true
+                - name: credentials
+                  mountPath: /credentials
+                  readOnly: true
+          volumes:
+            - name: results
+              persistentVolumeClaim:
+                claimName: performance-results
+            - name: config
+              configMap:
+                name: performance-config
+            - name: credentials
+              secret:
+                secretName: performance-credentials
+                optional: true

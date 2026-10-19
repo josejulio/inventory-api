@@ -7,8 +7,18 @@ make test-performance-ephemeral
 ```
 
 The target builds current checkout code by default, deploys an ephemeral
-environment, runs the workload against the committed p95 limits, collects
-results, and releases its reservation. Image overrides remain available.
+environment, runs a quick deep-history comparison, collects results, and
+releases its reservation. The default is `small`: three update rounds with
+30 updates of each type per round (`PERF_UPDATES=30`), three deletes per worker,
+batches of three, 100,000 background resources, 1,024-byte
+payloads, and history depths 227,872/56,968 for one/four workers. This preserves
+the workload that exposed the regression and records 90 samples of each update
+operation at one worker and 360 at four workers, plus 3/12 delete samples.
+Latency is informational; correctness checks remain enabled. Image and workload
+overrides remain available.
+
+Use `PERF_PROFILE=full make test-performance-ephemeral` for 100 update rounds,
+30 deletes per worker, batches of ten, and enforcement of the committed baseline.
 See [the workload guide](../../test/performance/README.md) for configuration.
 
 ## Scripts used by the ephemeral test
@@ -70,3 +80,28 @@ Inventory database migrations and dependency readiness). This is environment
 setup; measured workload operations have not started yet.
 
 Verify console feedback locally with `python3 scripts/performance/progress-test.py`.
+
+The default runner and Kubernetes Job deadline is eight hours
+(`PERF_JOB_TIMEOUT_SECONDS=28800`). The overall launcher deadline is nine hours
+(`PERF_OVERALL_TIMEOUT_SECONDS=32400`), including deployment. Both can be
+overridden when starting a run; the runner does not reload timeouts mid-run.
+
+Full Make runs keep 100 update rounds but default to 30 delete rounds per
+worker (`PERF_HISTORY_DELETE_ROUNDS=30`). Each live target receives three or
+four update rounds before its one measured delete. This retains 300 samples of
+each update operation per worker while reducing deletes to 30 per worker
+(120 at four workers). All operations still run against deep history.
+
+`PERF_HISTORY_BATCH_ROUNDS=10` prepares ten delete targets per worker per batch,
+so the default uses three batches per worker count. Peak seeded history stays
+at 2,278,720 rows per batch, while total seeded history drops from 45,574,400 to
+13,672,320 rows across both cases (70% fewer). Use
+`PERF_HISTORY_DELETE_ROUNDS=100` to restore one fresh target per update round.
+The setting must be 1..PERF_ROUNDS; full baseline runs require at least 30 delete
+rounds. The small profile defaults to three. Thirty delete samples provide a
+coarser p95 than 100, but the existing numeric limits remain unchanged.
+
+Live-history cases retain and log all baseline violations and continue from one
+to four workers after a failed case. The overall run still fails if either case
+fails. Cancellation or exhaustion of the overall runner deadline stops new work.
+Failed setup/measurement cases attempt scoped cleanup before the next case.

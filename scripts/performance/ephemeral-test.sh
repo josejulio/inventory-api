@@ -80,7 +80,7 @@ deployment_dir=''
 reservation_attempted=false
 reservation="inventory-perf-$(date +%s)-$RANDOM"
 # Bound each network command, plus an overall deadline watched by this process.
-run_timeout=${PERF_OVERALL_TIMEOUT_SECONDS:-2400}
+run_timeout=${PERF_OVERALL_TIMEOUT_SECONDS:-32400}
 run_timeout=$((10#$run_timeout))
 reservation_seconds=$((run_timeout + 1800))
 started=$SECONDS

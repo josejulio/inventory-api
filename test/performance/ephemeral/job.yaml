@@ -18,7 +18,7 @@ items:
       name: performance-runner
     spec:
       backoffLimit: 0
-      activeDeadlineSeconds: 1200
+      activeDeadlineSeconds: 28800
       template:
         metadata:
           labels:

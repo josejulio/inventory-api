@@ -1,7 +1,10 @@
 package ephemeral
 
 import (
+	"context"
+	"errors"
 	"fmt"
+	"strings"
 	"testing"
 )
 
@@ -138,5 +141,89 @@ func TestExplicitScenariosRequireDatabaseFixtures(t *testing.T) {
 		if err := c.Validate(); err == nil {
 			t.Fatalf("%s silently fell back to the legacy non-database workload", scenario)
 		}
+	}
+}
+
+func TestConcurrencyCasesContinueAfterFailure(t *testing.T) {
+	var visited []int
+	err := runConcurrencyCases(context.Background(), "history_live", func(workers int) error {
+		visited = append(visited, workers)
+		return fmt.Errorf("failure for %d", workers)
+	})
+	if len(visited) != 2 || visited[0] != 1 || visited[1] != 4 {
+		t.Fatalf("did not run both concurrency cases: %v", visited)
+	}
+	if err == nil || !strings.Contains(err.Error(), "failure for 1") || !strings.Contains(err.Error(), "failure for 4") {
+		t.Fatalf("did not retain both failures: %v", err)
+	}
+}
+
+func TestConcurrencyCasesRespectCancellation(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	visited := 0
+	err := runConcurrencyCases(ctx, "history_live", func(workers int) error {
+		visited++
+		cancel()
+		return ctx.Err()
+	})
+	if visited != 1 || !errors.Is(err, context.Canceled) {
+		t.Fatalf("cancellation ignored: visited=%d error=%v", visited, err)
+	}
+}
+
+func TestBaselineReportsAllViolations(t *testing.T) {
+	r := Result{Profile: "full", Protocol: "grpc", Scenario: "history_live", Workers: 1, Operations: map[string]Operation{
+		"workspace_update": {Completion: Stats{Count: 100, P95MS: 30}},
+		"reporter_update":  {Completion: Stats{Count: 100, P95MS: 40}},
+	}}
+	b := Baseline{Limits: map[string]float64{
+		"grpc/history_live/1/workspace_update/consumer_completion": 10,
+		"grpc/history_live/1/reporter_update/consumer_completion":  20,
+	}}
+	violations := baselineViolations(r, b)
+	if len(violations) != 2 {
+		t.Fatalf("wanted both violations, got %v", violations)
+	}
+}
+
+func TestHistoryLiveReducedDeletesPreserveUpdates(t *testing.T) {
+	c := DefaultConfig()
+	c.Rounds = 100
+	c.HistoryDeleteRounds = 30
+	counts := map[string]int{}
+	for target := 0; target < c.historyDeleteRounds(); target++ {
+		operations := historyOperations(c, target)
+		if operations[len(operations)-1] != "delete" {
+			t.Fatal("target must be deleted only after its updates")
+		}
+		for _, operation := range operations {
+			counts[operation]++
+		}
+	}
+	if counts["delete"] != 30 || counts["workspace_update"] != 300 || counts["reporter_update"] != 300 {
+		t.Fatalf("incorrect coverage after reducing deletes: %v", counts)
+	}
+	for _, workers := range []int{1, 4} {
+		r := Result{Scenario: "history_live", Workers: workers, Operations: map[string]Operation{}}
+		for operation, count := range counts {
+			r.Operations[operation] = Operation{API: Stats{Count: count * workers}, Propagation: Stats{Count: count * workers}, Completion: Stats{Count: count * workers}}
+		}
+		if err := validateFixtureResult(r, c); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+func TestHistoryLiveDeleteMinimumSamples(t *testing.T) {
+	r := Result{Profile: "full", Protocol: "grpc", Scenario: "history_live", Workers: 1, Operations: map[string]Operation{"delete": {Propagation: Stats{Count: 30, P95MS: 10}}}}
+	b := Baseline{Limits: map[string]float64{"grpc/history_live/1/delete/propagation": 20}}
+	if err := checkBaseline(r, b); err != nil {
+		t.Fatal("30 delete samples must be sufficient", err)
+	}
+	operation := r.Operations["delete"]
+	operation.Propagation.Count = 29
+	r.Operations["delete"] = operation
+	if checkBaseline(r, b) == nil {
+		t.Fatal("accepted fewer than 30 delete samples")
 	}
 }

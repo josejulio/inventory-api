@@ -2,9 +2,11 @@ package ephemeral
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math"
 	"os"
+	"sort"
 	"strings"
 )
 
@@ -15,6 +17,10 @@ type Baseline struct {
 
 // Minimum sample coverage is a harness rule, independent of the chosen limits.
 const minimumBaselineSamples = 100
+
+// Deep-history deletes rebuild the fixture; 30 samples retain a useful tail
+// check while update operations continue to require at least 100 samples.
+const minimumDeleteSamples = 30
 
 func loadBaseline(path string) (Baseline, error) {
 	var b Baseline
@@ -28,6 +34,17 @@ func loadBaseline(path string) (Baseline, error) {
 	return b, nil
 }
 func checkBaseline(r Result, b Baseline) error {
+	violations := baselineViolations(r, b)
+	if len(violations) == 0 {
+		return nil
+	}
+	return errors.New(strings.Join(violations, "; "))
+}
+
+// baselineViolations retains every failed gate, rather than stopping at the
+// first operation. Missing coverage and latency violations remain failures.
+func baselineViolations(r Result, b Baseline) []string {
+	var violations []string
 	prefix := fmt.Sprintf("%s/%s/%d/", r.Protocol, r.Scenario, r.Workers)
 	measured := map[string]Stats{}
 	for op, s := range r.Operations {
@@ -39,26 +56,33 @@ func checkBaseline(r Result, b Baseline) error {
 	for key, s := range measured {
 		limit, ok := b.Limits[key]
 		if !ok || limit <= 0 || math.IsNaN(limit) || math.IsInf(limit, 0) {
-			return fmt.Errorf("missing or invalid baseline entry: %s", key)
+			violations = append(violations, fmt.Sprintf("missing or invalid baseline entry: %s", key))
+			continue
 		}
 		if r.Profile == "small" {
 			continue
 		}
-		if s.Count < minimumBaselineSamples {
-			return fmt.Errorf("%s has %d samples; baseline requires %d", key, s.Count, minimumBaselineSamples)
+		minimum := minimumBaselineSamples
+		if r.Scenario == "history_live" && strings.HasSuffix(key, "/delete/propagation") {
+			minimum = minimumDeleteSamples
+		}
+		if s.Count < minimum {
+			violations = append(violations, fmt.Sprintf("%s has %d samples; baseline requires %d", key, s.Count, minimum))
+			continue
 		}
 		if s.P95MS > limit {
-			return fmt.Errorf("%s p95 %.2f ms exceeds %.2f ms", key, s.P95MS, limit)
+			violations = append(violations, fmt.Sprintf("%s p95 %.2f ms exceeds %.2f ms", key, s.P95MS, limit))
 		}
 	}
 	for key := range b.Limits {
 		if strings.HasPrefix(key, prefix) {
 			if _, ok := measured[key]; !ok {
-				return fmt.Errorf("stale baseline entry: %s", key)
+				violations = append(violations, fmt.Sprintf("stale baseline entry: %s", key))
 			}
 		}
 	}
-	return nil
+	sort.Strings(violations)
+	return violations
 }
 
 func validateFixtureResult(r Result, c Config) error {
@@ -66,6 +90,9 @@ func validateFixtureResult(r Result, c Config) error {
 	for _, op := range operations {
 		s, ok := r.Operations[op]
 		expected := r.Workers * c.Rounds
+		if r.Scenario == "history_live" && op == "delete" {
+			expected = r.Workers * c.historyDeleteRounds()
+		}
 		if op == "workspace_update" || op == "reporter_update" {
 			expected *= c.Updates
 		}

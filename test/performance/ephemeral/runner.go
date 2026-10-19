@@ -59,11 +59,12 @@ type MeasurementWindow struct {
 
 // Result includes partial results even when correctness or propagation fails.
 type Result struct {
-	MeasurementWindows []MeasurementWindow `json:"measurement_windows,omitempty"`
-	SetupSeconds       float64             `json:"setup_seconds,omitempty"`
-	CleanupSeconds     float64             `json:"cleanup_seconds,omitempty"`
-	SeededHistoryRows  int64               `json:"seeded_history_rows,omitempty"`
-	FailureKind        string              `json:"failure_kind,omitempty"`
+	HistoryDeleteRounds int                 `json:"history_delete_rounds,omitempty"`
+	MeasurementWindows  []MeasurementWindow `json:"measurement_windows,omitempty"`
+	SetupSeconds        float64             `json:"setup_seconds,omitempty"`
+	CleanupSeconds      float64             `json:"cleanup_seconds,omitempty"`
+	SeededHistoryRows   int64               `json:"seeded_history_rows,omitempty"`
+	FailureKind         string              `json:"failure_kind,omitempty"`
 
 	ExcludedCoverage     []string             `json:"excluded_coverage,omitempty"`
 	RunnerRevision       string               `json:"runner_revision,omitempty"`

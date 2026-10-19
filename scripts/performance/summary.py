@@ -141,6 +141,8 @@ def summarize(path, exit_status=None, cleanup=None):
     for result in results:
         if result.get('scenario') == 'history_live':
             fixture = result.get('fixture', {})
+            if 'history_delete_rounds' in result:
+                lines.append(f"  Planned per worker: {result.get('rounds', '?')} update rounds; {result['history_delete_rounds']} deletes.")
             lines.append(f"Live history/{result.get('workers')}: depth {fixture.get('history_depth', '?')} per target; {result.get('seeded_history_rows', 0):,} total seeded rows; setup {result.get('setup_seconds', 0):.2f}s; measurement {result.get('measurement_seconds', 0):.2f}s; cleanup {result.get('cleanup_seconds', 0):.2f}s.")
             for operation, stats in sorted(result['operations'].items()):
                 if operation != 'delete':
@@ -177,6 +179,10 @@ def summarize(path, exit_status=None, cleanup=None):
     excluded = sorted({item for result in results for item in result.get("excluded_coverage", [])})
     if excluded:
         lines.append("Excluded coverage: " + ", ".join(excluded))
+    if results:
+        failed_cases = sum(bool(result.get('failures')) for result in results)
+        failure_count = sum(len(result.get('failures') or []) for result in results)
+        lines.append(f"Workload cases: {len(results)} recorded; {failed_cases} failed; {failure_count} recorded failures (see details below).")
     if rows:
         lines += ["", f"{'Protocol/scenario/workers':<25} {'Operation':<18} {'Calls':>6} {'API p95 ms':>12} {'Pipeline p95 ms':>17}", *rows, "", "Pipeline timing includes API plus CDC/Kafka/consumer/SpiceDB completion; API timing ends at the response."]
     else:

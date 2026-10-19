@@ -2,6 +2,7 @@ package ephemeral
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"sync"
@@ -69,22 +70,25 @@ func runHistoryLive(ctx context.Context, t *transport, f *fixtures, slot, runID 
 	started := time.Now()
 	phase := "starting"
 	batchNumber := 0
-	totalBatches := (c.Rounds + c.HistoryBatchRounds - 1) / c.HistoryBatchRounds
+	totalBatches := (c.historyDeleteRounds() + c.HistoryBatchRounds - 1) / c.HistoryBatchRounds
 	progress := func(next, details string) {
 		phase = next
 		log.Printf("scenario=history_live workers=%d batch=%d/%d elapsed=%s phase=%s %s", workers, batchNumber, totalBatches, time.Since(started).Round(time.Millisecond), phase, details)
 	}
-	progress("starting", fmt.Sprintf("rounds=%d depth=%d background=%d", c.Rounds, c.HistoryDepth, c.Background))
+	progress("starting", fmt.Sprintf("update_rounds=%d delete_rounds=%d depth=%d background=%d", c.Rounds, c.historyDeleteRounds(), c.HistoryDepth, c.Background))
 	local := *t
 	local.c.Instance = fmt.Sprintf("perf-%s-history_live-%d", runID, workers)
 	scope := Fixture{Instance: local.c.Instance, Background: c.Background, Targets: []string{}}
-	r := Result{RunID: runID, Instance: scope.Instance, Scenario: "history_live", Fixture: &scope, Protocol: c.Protocol, Workers: workers, Profile: c.Profile, Rounds: c.Rounds, PayloadBytes: c.PayloadBytes, RunnerRevision: c.RunnerRevision, Operations: map[string]Operation{}, CompletionSignal: "PostgreSQL consumer_notifications transaction ID for reports; relationship observation and persisted tombstone for deletes", LatencyLimits: "informational; no thresholds", WriteVisibility: "MINIMIZE_LATENCY", CheckConsistency: "CheckForUpdate", PollMS: c.PollInterval.Milliseconds(), RequestTimeoutMS: c.RequestTimeout.Milliseconds(), PropagationTimeoutMS: c.PropagationTimeout.Milliseconds()}
+	r := Result{HistoryDeleteRounds: c.historyDeleteRounds(), RunID: runID, Instance: scope.Instance, Scenario: "history_live", Fixture: &scope, Protocol: c.Protocol, Workers: workers, Profile: c.Profile, Rounds: c.Rounds, PayloadBytes: c.PayloadBytes, RunnerRevision: c.RunnerRevision, Operations: map[string]Operation{}, CompletionSignal: "PostgreSQL consumer_notifications transaction ID for reports; relationship observation and persisted tombstone for deletes", LatencyLimits: "informational; no thresholds", WriteVisibility: "MINIMIZE_LATENCY", CheckConsistency: "CheckForUpdate", PollMS: c.PollInterval.Milliseconds(), RequestTimeoutMS: c.RequestTimeout.Milliseconds(), PropagationTimeoutMS: c.PropagationTimeout.Milliseconds()}
 	api, pipeline, completion := map[string][]time.Duration{}, map[string][]time.Duration{}, map[string][]time.Duration{}
 	var mu sync.Mutex
 	fail := func(err error) {
 		mu.Lock()
 		r.Failures = append(r.Failures, err.Error())
 		r.FailureKind = "correctness"
+		if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
+			r.FailureKind = "canceled_or_timed_out"
+		}
 		mu.Unlock()
 	}
 	// Preserve partial samples even when a later setup or cleanup fails.
@@ -110,10 +114,10 @@ func runHistoryLive(ctx context.Context, t *transport, f *fixtures, slot, runID 
 		}
 		r.SetupSeconds += time.Since(setup).Seconds()
 		setupPending = false
-		for round := 0; round < c.Rounds; round += c.HistoryBatchRounds {
+		for round := 0; round < c.historyDeleteRounds(); round += c.HistoryBatchRounds {
 			batchNumber++
-			batchRounds := min(c.HistoryBatchRounds, c.Rounds-round)
-			progress("target_setup", fmt.Sprintf("rounds=%d-%d/%d targets=%d", round+1, round+batchRounds, c.Rounds, workers*batchRounds))
+			batchRounds := min(c.HistoryBatchRounds, c.historyDeleteRounds()-round)
+			progress("target_setup", fmt.Sprintf("delete_rounds=%d-%d/%d update_rounds=%d-%d/%d targets=%d", round+1, round+batchRounds, c.historyDeleteRounds(), completedUpdateRounds(c, round)+1, completedUpdateRounds(c, round+batchRounds), c.Rounds, workers*batchRounds))
 			batch := Fixture{Instance: scope.Instance, Targets: []string{}}
 			workspaces := make([]string, workers*batchRounds)
 			setup = time.Now()
@@ -187,7 +191,7 @@ func runHistoryLive(ctx context.Context, t *transport, f *fixtures, slot, runID 
 			}
 			r.SetupSeconds += time.Since(setup).Seconds()
 			setupPending = false
-			progress("measurement", fmt.Sprintf("rounds=%d-%d/%d", round+1, round+batchRounds, c.Rounds))
+			progress("measurement", fmt.Sprintf("update_rounds=%d-%d/%d delete_rounds=%d-%d/%d", completedUpdateRounds(c, round)+1, completedUpdateRounds(c, round+batchRounds), c.Rounds, round+1, round+batchRounds, c.historyDeleteRounds()))
 			begin := time.Now()
 			if r.MeasurementStart.IsZero() {
 				r.MeasurementStart = begin.UTC()
@@ -203,11 +207,7 @@ func runHistoryLive(ctx context.Context, t *transport, f *fixtures, slot, runID 
 						index := batchRound*workers + w
 						id, ws := batch.Targets[index], workspaces[index]
 						version := c.HistoryDepth - 1
-						ops := []string{}
-						for u := 0; u < c.Updates; u++ {
-							ops = append(ops, "workspace_update", "reporter_update")
-						}
-						ops = append(ops, "delete")
+						ops := historyOperations(c, round+batchRound)
 						for step, op := range ops {
 							oldWS := ws
 							if op == "workspace_update" {
@@ -275,7 +275,7 @@ func runHistoryLive(ctx context.Context, t *transport, f *fixtures, slot, runID 
 			if len(r.Failures) > 0 {
 				return fmt.Errorf("live history batch correctness failure")
 			}
-			progress("batch_cleanup", fmt.Sprintf("measurement_duration=%s rounds_measured=%d/%d", end.Sub(begin).Round(time.Millisecond), round+batchRounds, c.Rounds))
+			progress("batch_cleanup", fmt.Sprintf("measurement_duration=%s update_rounds_measured=%d/%d deletes_measured_per_worker=%d/%d", end.Sub(begin).Round(time.Millisecond), completedUpdateRounds(c, round+batchRounds), c.Rounds, round+batchRounds, c.historyDeleteRounds()))
 			cleanup = time.Now()
 			if err := f.drain(ctx, slot, max(c.PropagationTimeout, 2*time.Minute), c.PollInterval, advance); err != nil {
 				return err
@@ -300,6 +300,17 @@ func runHistoryLive(ctx context.Context, t *transport, f *fixtures, slot, runID 
 	if err := execute(); err != nil {
 		log.Printf("scenario=history_live workers=%d batch=%d/%d phase=%s failed: %v", workers, batchNumber, totalBatches, phase, err)
 		fail(err)
+		if ctx.Err() == nil {
+			progress("failure_cleanup", "removing this case's fixtures before continuing")
+			cleanupStarted := time.Now()
+			cleanupCtx, cancel := context.WithTimeout(ctx, 10*time.Minute)
+			cleanupErr := f.cleanup(cleanupCtx, scope.Instance)
+			cancel()
+			r.CleanupSeconds += time.Since(cleanupStarted).Seconds()
+			if cleanupErr != nil {
+				fail(fmt.Errorf("failure cleanup: %w", cleanupErr))
+			}
+		}
 	}
 	n := 0
 	for _, op := range scenarioOperations("history_live", false) {
@@ -321,18 +332,38 @@ func runHistoryLive(ctx context.Context, t *transport, f *fixtures, slot, runID 
 	progress("result_validation", "")
 	if len(r.Failures) == 0 && baseline != nil {
 		r.LatencyLimits = "calibrated baseline; small profile skips latency gates"
-		if err := checkBaseline(r, *baseline); err != nil {
+		violations := baselineViolations(r, *baseline)
+		if len(violations) > 0 {
 			r.FailureKind = "latency"
-			r.Failures = append(r.Failures, err.Error())
+			r.Failures = append(r.Failures, violations...)
 		}
 	}
 	if err := writeResult(c.ResultsDir, r); err != nil {
 		return err
 	}
 	if len(r.Failures) > 0 {
-		progress("failed", fmt.Sprintf("kind=%s", r.FailureKind))
+		progress("failed", fmt.Sprintf("kind=%s failures=%d measured_calls=%d", r.FailureKind, len(r.Failures), n))
+		for _, failure := range r.Failures {
+			log.Printf("scenario=history_live workers=%d failure: %s", workers, failure)
+		}
 		return fmt.Errorf("history_live %s failure: %s", r.FailureKind, r.Failures[0])
 	}
 	progress("complete", fmt.Sprintf("measured_calls=%d measurement_seconds=%.2f", n, r.MeasurementSeconds))
 	return nil
+}
+
+// Distribute all update rounds over the smaller pool of delete targets. Each
+// target stays live across its update rounds, then is deleted exactly once.
+func historyOperations(c Config, target int) []string {
+	rounds := completedUpdateRounds(c, target+1) - completedUpdateRounds(c, target)
+	operations := make([]string, 0, rounds*c.Updates*2+1)
+	for update := 0; update < rounds*c.Updates; update++ {
+		operations = append(operations, "workspace_update", "reporter_update")
+	}
+	return append(operations, "delete")
+}
+
+func completedUpdateRounds(c Config, targets int) int {
+	deletes := c.historyDeleteRounds()
+	return targets*(c.Rounds/deletes) + min(targets, c.Rounds%deletes)
 }

@@ -34,7 +34,7 @@ def resolve(env):
     if env.get('PERF_BONFIRE_SOURCE', 'appsre') not in ('appsre', 'file'):
         raise ValueError('PERF_BONFIRE_SOURCE must be appsre or file')
     boolean('PERF_KEEP_NAMESPACE')
-    integer('PERF_OVERALL_TIMEOUT_SECONDS', 2400, minimum=1200, scale=10**9)
+    integer('PERF_OVERALL_TIMEOUT_SECONDS', 32400, minimum=1200, scale=10**9)
     full = profile == 'full'
     c = {'profile': profile, 'protocol': protocol,
          'endpoint': env.get('PERF_ENDPOINT', 'kessel-inventory-api:9000'),
@@ -48,7 +48,7 @@ def resolve(env):
             ('request_timeout', 'PERF_REQUEST_TIMEOUT_SECONDS', 10, 10**9),
             ('propagation_timeout', 'PERF_PROPAGATION_TIMEOUT_SECONDS', 60, 10**9),
             ('poll_interval', 'PERF_POLL_MS', 100, 10**6),
-            ('run_timeout', 'PERF_JOB_TIMEOUT_SECONDS', 1200, 10**9)):
+            ('run_timeout', 'PERF_JOB_TIMEOUT_SECONDS', 28800, 10**9)):
         c[field] = integer(key, default, scale=scale) * scale
     c['history'] = integer('PERF_HISTORY', 0 if env.get('PERF_SCENARIOS') == 'fresh' else (227872 if full else 40), minimum=0)
     database = env.get('PERF_DATABASE_URL_FILE', '')
@@ -56,7 +56,10 @@ def resolve(env):
     c['scenarios'] = env.get('PERF_SCENARIOS', default_scenarios).split(',')
     if len(set(c['scenarios'])) != len(c['scenarios']) or any(v not in ('fresh', 'history', 'history_live') for v in c['scenarios']):
         raise ValueError('PERF_SCENARIOS must select distinct fresh, history or history_live scenarios')
-    c['history_batch_rounds'] = integer('PERF_HISTORY_BATCH_ROUNDS', 1)
+    c['history_delete_rounds'] = integer('PERF_HISTORY_DELETE_ROUNDS', min(30, c['rounds']))
+    if c['history_delete_rounds'] > c['rounds']:
+        raise ValueError('PERF_HISTORY_DELETE_ROUNDS must not exceed PERF_ROUNDS')
+    c['history_batch_rounds'] = integer('PERF_HISTORY_BATCH_ROUNDS', 10 if full else 3)
     if c['history_batch_rounds'] > 100:
         raise ValueError('PERF_HISTORY_BATCH_ROUNDS must be 1..100')
     if env.get('PERF_HISTORY_DEPTH_4'):
@@ -126,6 +129,8 @@ def resolve(env):
                 return ['api', 'propagation']
             keys = {f'{protocol}/{scenario}/{workers}/{op}/{kind}' for scenario in c['scenarios'] for workers in (1, 4) for op in operations(scenario) for kind in kinds(scenario, op)}
             if set(b['p95_limits_ms']) != keys or any(isinstance(v, bool) or not isinstance(v, (int, float)) or not math.isfinite(v) or v <= 0 for v in b['p95_limits_ms'].values()):
+                raise ValueError()
+            if full and 'history_live' in c['scenarios'] and c['history_delete_rounds'] < 30:
                 raise ValueError()
             if full and c['rounds'] < 100:
                 raise ValueError()

@@ -387,22 +387,26 @@ test-performance:
 .PHONY: test-performance-ephemeral
 # Opt-in cluster workload; this target never invokes local performance tests.
 test-performance-ephemeral:
-	@profile="$${PERF_PROFILE:-full}"; \
-	rounds=100; history_depth=227872; history_depth_four=56968; \
-	if [ "$$profile" = small ]; then rounds=3; history_depth=40; history_depth_four=40; fi; \
+	@profile="$${PERF_PROFILE:-small}"; \
+	rounds=100; updates=3; batch_rounds=10; delete_rounds=30; baseline="$(CURDIR)/test/performance/baseline-ephemeral-history-live.json"; \
+	if [ "$$profile" = small ]; then rounds=3; updates=30; batch_rounds=3; delete_rounds=3; baseline=""; fi; \
 	PERF_PROFILE="$$profile" \
 	PERF_ROUNDS="$${PERF_ROUNDS:-$$rounds}" \
-	PERF_JOB_TIMEOUT_SECONDS="$${PERF_JOB_TIMEOUT_SECONDS:-2400}" \
-	PERF_OVERALL_TIMEOUT_SECONDS="$${PERF_OVERALL_TIMEOUT_SECONDS:-3600}" \
-	PERF_BASELINE="$${PERF_BASELINE-$(CURDIR)/test/performance/baseline-ephemeral-history-live.json}" \
+	PERF_UPDATES="$${PERF_UPDATES:-$$updates}" \
+	PERF_JOB_TIMEOUT_SECONDS="$${PERF_JOB_TIMEOUT_SECONDS:-28800}" \
+	PERF_OVERALL_TIMEOUT_SECONDS="$${PERF_OVERALL_TIMEOUT_SECONDS:-32400}" \
+	PERF_BASELINE="$${PERF_BASELINE-$$baseline}" \
 	BONFIRE_LOCAL_CONFIG="$${BONFIRE_LOCAL_CONFIG:-$(CURDIR)/test/performance/bonfire-ephemeral.yaml}" \
 	PERF_BONFIRE_SOURCE="$${PERF_BONFIRE_SOURCE:-file}" \
 	PERF_KAFKA_CONNECT_TAG="$${PERF_KAFKA_CONNECT_TAG:-latest}" \
 	PERF_SPICEDB_IMAGE="$${PERF_SPICEDB_IMAGE:-quay.io/redhat-services-prod/project-kessel-tenant/kessel-relations/spicedb:latest}" \
 	PERF_SCENARIOS="$${PERF_SCENARIOS:-history_live}" \
-	PERF_HISTORY_DEPTH="$${PERF_HISTORY_DEPTH:-$$history_depth}" \
-	PERF_HISTORY_DEPTH_4="$${PERF_HISTORY_DEPTH_4:-$$history_depth_four}" \
-	PERF_HISTORY_BATCH_ROUNDS="$${PERF_HISTORY_BATCH_ROUNDS:-3}" \
+	PERF_HISTORY_DEPTH="$${PERF_HISTORY_DEPTH:-227872}" \
+	PERF_HISTORY_DEPTH_4="$${PERF_HISTORY_DEPTH_4:-56968}" \
+	PERF_HISTORY_BATCH_ROUNDS="$${PERF_HISTORY_BATCH_ROUNDS:-$$batch_rounds}" \
+	PERF_HISTORY_DELETE_ROUNDS="$${PERF_HISTORY_DELETE_ROUNDS:-$$delete_rounds}" \
+	PERF_BACKGROUND="$${PERF_BACKGROUND:-100000}" \
+	PERF_PAYLOAD_BYTES="$${PERF_PAYLOAD_BYTES:-1024}" \
 	PERF_DATABASE_URL_FILE="$${PERF_DATABASE_URL_FILE:-env}" \
 	PERF_PLAINTEXT="$${PERF_PLAINTEXT:-true}" \
 	./scripts/performance/ephemeral-test.sh

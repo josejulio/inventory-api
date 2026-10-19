@@ -3,7 +3,9 @@ package ephemeral
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"log"
 	"os"
 	"sync"
 	"time"
@@ -113,15 +115,19 @@ func runFixtures(ctx context.Context, t *transport, runID string) error {
 		}
 		baseline = &b
 	}
+	var scenarioFailures []error
 	for _, scenario := range c.selectedScenarios() {
+		if scenario == "history_live" {
+			err := runConcurrencyCases(ctx, scenario, func(workers int) error {
+				return runHistoryLive(ctx, t, f, slot, runID, workers, baseline)
+			})
+			if err != nil {
+				scenarioFailures = append(scenarioFailures, err)
+			}
+			continue
+		}
 		for _, workers := range []int{1, 4} {
 			freshLifecycle := c.freshLifecycle(scenario)
-			if scenario == "history_live" {
-				if err := runHistoryLive(ctx, t, f, slot, runID, workers, baseline); err != nil {
-					return err
-				}
-				continue
-			}
 			// Each scenario has its own natural-key scope and equivalent live row counts.
 			// Scoped deletion and VACUUM reuse pages, but physical size may retain growth;
 			// report that footprint explicitly rather than claiming a new database.
@@ -362,5 +368,30 @@ func runFixtures(ctx context.Context, t *transport, runID string) error {
 			}
 		}
 	}
-	return runRateRounds(ctx, t, f, slot, runID)
+	if err := runRateRounds(ctx, t, f, slot, runID); err != nil {
+		scenarioFailures = append(scenarioFailures, err)
+	}
+	return errors.Join(scenarioFailures...)
+}
+
+// runConcurrencyCases preserves failures while allowing the next independent
+// concurrency case to run. A canceled run cannot safely execute more requests.
+func runConcurrencyCases(ctx context.Context, scenario string, run func(int) error) error {
+	var failures []error
+	completed, failedCases := 0, 0
+	for _, workers := range []int{1, 4} {
+		if err := ctx.Err(); err != nil {
+			failures = append(failures, err)
+			log.Printf("scenario=%s workers=%d not run: %v", scenario, workers, err)
+			break
+		}
+		if err := run(workers); err != nil {
+			failedCases++
+			failures = append(failures, fmt.Errorf("%s/%d: %w", scenario, workers, err))
+			log.Printf("scenario=%s workers=%d case_failed: %v; continuing if context permits", scenario, workers, err)
+		}
+		completed++
+	}
+	log.Printf("scenario=%s cases_completed=%d/2 failed_cases=%d", scenario, completed, failedCases)
+	return errors.Join(failures...)
 }

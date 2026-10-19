@@ -9,6 +9,7 @@ import (
 
 // Config describes lifecycle workloads and optional scoped database fixtures.
 type Config struct {
+	HistoryDeleteRounds     int           `json:"history_delete_rounds,omitempty"`
 	HistoryDepthFourWorkers int           `json:"history_depth_four_workers,omitempty"`
 	HistoryBatchRounds      int           `json:"history_batch_rounds,omitempty"`
 	Scenarios               []string      `json:"scenarios,omitempty"`
@@ -61,6 +62,13 @@ func (c Config) Validate() error {
 	}
 	if seen["history_live"] && (c.DatabaseURLFile == "" || c.HistoryDepth < 2 || (c.HistoryDepthFourWorkers != 0 && c.HistoryDepthFourWorkers < 2) || c.HistoryBatchRounds < 1 || c.HistoryBatchRounds > 100) {
 		return fmt.Errorf("history_live requires database fixtures, depth >= 2, batch rounds 1..100")
+	}
+
+	if seen["history_live"] && (c.HistoryDeleteRounds < 0 || c.historyDeleteRounds() > c.Rounds) {
+		return fmt.Errorf("history delete rounds must be between 1 and update rounds")
+	}
+	if seen["history_live"] && c.Profile == "full" && c.BaselineFile != "" && c.historyDeleteRounds() < minimumDeleteSamples {
+		return fmt.Errorf("full history latency gates require at least %d delete rounds", minimumDeleteSamples)
 	}
 
 	if len(c.MessageRates) > 0 {
@@ -122,4 +130,13 @@ func scenarioOperations(scenario string, freshLifecycle bool) []string {
 // omitted selection preserves the original runner's legacy lifecycle.
 func (c Config) freshLifecycle(scenario string) bool {
 	return scenario == "fresh" && c.Scenarios != nil
+}
+
+// The default is 30 deletes per worker, bounded by the number of update rounds
+// so small profiles retain their existing short lifecycle.
+func (c Config) historyDeleteRounds() int {
+	if c.HistoryDeleteRounds != 0 {
+		return c.HistoryDeleteRounds
+	}
+	return min(30, c.Rounds)
 }
